@@ -26,6 +26,9 @@ def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     if _looks_like_cleanup_request(lowered):
         return _windows_cleanup_plan(windows_hosts)
 
+    if _looks_like_search_request(lowered):
+        return _windows_search_plan(request, windows_hosts)
+
     if _looks_like_disk_inventory_request(lowered):
         return _windows_disk_inventory_plan(windows_hosts)
 
@@ -318,6 +321,52 @@ def _windows_cleanup_plan(hosts: list[Host]) -> ExecutionPlan:
         target_hosts=[host.name for host in hosts],
         steps=steps,
         raw={"builtin": True, "handler": "cleanup", "specialist": "workspace-operator"},
+    )
+
+
+def _looks_like_search_request(lowered: str) -> bool:
+    search_terms = ("search", "find", "look for", "locate", "where is")
+    file_terms = ("file", ".txt", ".log", ".json", ".py", "test.txt")
+    return any(term in lowered for term in search_terms) and any(term in lowered for term in file_terms)
+
+
+def _windows_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan:
+    # Extract filename from request (simple regex)
+    match = re.search(r"search (?:my )?([A-Za-z0-9._-]+)", request, re.IGNORECASE)
+    filename = match.group(1) if match else "test.txt"
+    
+    # Robust PowerShell search
+    command = (
+        f"$file = '{filename}'; "
+        "Write-Output \"Searching for $file across C:\\...\"; "
+        "Get-ChildItem -Path C:\\ -Filter $file -Recurse -ErrorAction SilentlyContinue | "
+        "Select-Object -ExpandProperty FullName"
+    )
+    steps = [
+        PlanStep(
+            id=f"builtin-search-{index}",
+            title=f"Search for {filename}",
+            host=host.name,
+            kind="inspect",
+            rationale="Handled by Cody's built-in file search handler.",
+            command=command,
+            expected_signal="Full path to the found file",
+            validation_type="text",
+        )
+        for index, host in enumerate(hosts, start=1)
+    ]
+    return ExecutionPlan(
+        summary=f"Search for file '{filename}' on Windows hosts.",
+        planner_notes=["matched built-in deterministic search handler"],
+        risk="low",
+        domain="infra",
+        operation_class="inspect",
+        requires_confirmation=False,
+        requires_unsafe=False,
+        missing_information=[],
+        target_hosts=[host.name for host in hosts],
+        steps=steps,
+        raw={"builtin": True, "handler": "search", "specialist": "infra-inspector"},
     )
 
 

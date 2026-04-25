@@ -20,6 +20,7 @@ Rules:
 - Never invent hosts.
 - Prefer inspection commands first when the user asks to "check", "show", "list", "status", or "version".
 - For Windows hosts, produce PowerShell command text only. Do not wrap it in "powershell -Command".
+- IMPORTANT: Never use CMD.exe style flags (e.g., dir /s, del /f, copy /y). Use native PowerShell cmdlets (e.g., Get-ChildItem -Recurse, Remove-Item -Force, Copy-Item).
 - For Linux hosts, produce shell commands that can run through "bash -lc".
 - Inspection commands must emit useful stdout directly.
 - For surgical file edits, use the kind "edit" and provide the file_path, old_string, and new_string in the command block as a JSON-like structure or clear instructions for the executor.

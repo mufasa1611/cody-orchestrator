@@ -14,12 +14,54 @@ console = Console()
 
 def check_ollama() -> bool:
     try:
-        response = requests.get("http://127.0.0.1:11434", timeout=2)
+        response = requests.get("http://127.0.0.1:11434/api/tags", timeout=2)
         return response.status_code == 200
     except requests.RequestException:
         return False
 
+def find_ollama_exe() -> str | None:
+    # 1. Check PATH
+    try:
+        result = subprocess.run(["where", "ollama"], capture_output=True, text=True)
+        if result.returncode == 0:
+            return result.stdout.splitlines()[0].strip()
+    except Exception:
+        pass
+
+    # 2. Check default Windows path
+    local_app_data = os.getenv("LOCALAPPDATA")
+    if local_app_data:
+        candidate = os.path.join(local_app_data, "Programs", "Ollama", "ollama.exe")
+        if os.path.exists(candidate):
+            return candidate
+
+    return None
+
+def start_ollama_automatically() -> bool:
+    exe = find_ollama_exe()
+    if not exe:
+        return False
+
+    console.print("[cyan]Starting Ollama server in background...[/cyan]")
+    try:
+        # Start in background without a visible window
+        subprocess.Popen(
+            [exe, "serve"],
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        # Give it a few seconds to boot
+        for _ in range(10):
+            time.sleep(1)
+            if check_ollama():
+                return True
+    except Exception:
+        pass
+    return False
+
 def get_installed_models() -> list[str]:
+
     try:
         response = requests.get("http://127.0.0.1:11434/api/tags", timeout=5)
         if response.status_code == 200:
@@ -77,15 +119,25 @@ def run_setup_wizard() -> str | None:
     # 1. Check Ollama
     console.print("Checking for Ollama...")
     if not check_ollama():
-        console.print("[bold red]❌ Ollama is not running or not installed.[/bold red]")
-        console.print("Please install Ollama from [blue]https://ollama.com[/blue] and ensure it's running (e.g., `ollama serve`).")
-        
-        while not check_ollama():
-            if Confirm.ask("Is Ollama running now? Try again?"):
-                continue
+        console.print("[yellow]Ollama is not running.[/yellow]")
+        if Confirm.ask("Would you like me to attempt to start the Ollama server for you automatically?"):
+            if start_ollama_automatically():
+                console.print("[bold green]✓ Ollama started successfully.[/bold green]")
             else:
-                console.print("[yellow]Setup incomplete. Codex will use default settings and may fail to connect.[/yellow]")
-                return None
+                console.print("[bold red]❌ Failed to start Ollama automatically.[/bold red]")
+                console.print("Please install Ollama from [blue]https://ollama.com[/blue] and ensure it's running (e.g., `ollama serve`).")
+                while not check_ollama():
+                    if Confirm.ask("Is Ollama running now? Try again?"):
+                        continue
+                    else:
+                        return None
+        else:
+            console.print("Please ensure Ollama is running manually before proceeding.")
+            while not check_ollama():
+                if Confirm.ask("Is Ollama running now? Try again?"):
+                    continue
+                else:
+                    return None
     console.print("[bold green]✓ Ollama is running.[/bold green]")
 
     # 2. Hardware check & suggestion
