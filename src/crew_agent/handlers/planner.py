@@ -26,6 +26,7 @@ Rules:
 - Use the kind "web_search" and the search query as the command when you need to research documentation or error solutions. Assign these steps to the 'local-win' host or the first available host in the inventory.
 - Use the kind "discovery" when the user wants to scan the network or find other devices. Assign these steps to a local host.
 - Even if a request is purely research-based, you MUST provide at least one executable step.
+- For change and edit steps, you MUST provide a verify_command to confirm the success of the action. Don't claim success unless verified.
 - Avoid placeholder or weak commands that return nothing.
 - Example Windows inspection command for PowerShell version:
   `$PSVersionTable.PSVersion | Select-Object Major,Minor,Build,Revision | ConvertTo-Json -Compress`

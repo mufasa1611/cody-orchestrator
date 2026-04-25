@@ -249,8 +249,8 @@ def run_request(
             i += 1
             continue
             
-        if replan_count < 1:  # Allow 1 replan attempt
-            ui.phase("thinking", f"step '{step.title}' failed. Attempting to re-plan with error context...")
+        if replan_count < 3:  # Increased from 1 to 3 for better resilience
+            ui.phase("thinking", f"step '{step.title}' failed (attempt {replan_count + 1}/3). Attempting to re-plan with error context...")
             error_context = result.stderr or result.validation_error or "Unknown error"
             refined_request = (
                 f"The previous plan failed at step '{step.title}' with error: {error_context}. "
@@ -260,9 +260,9 @@ def run_request(
                 new_plan = create_execution_plan(refined_request, selected_hosts, config)
                 if new_plan.steps:
                     ui.phase("thinking", "received a new execution plan. Continuing with updated steps.")
+                    # Insert new steps at current position
                     plan.steps = plan.steps[:i] + new_plan.steps
                     replan_count += 1
-                    # Don't increment i, the loop will pick up new_plan.steps[0] at the current i
                     continue
             except Exception as e:
                 ui.phase("warn", f"re-planning failed: {e}")

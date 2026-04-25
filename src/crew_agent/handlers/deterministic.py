@@ -20,6 +20,9 @@ def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     if _looks_like_disk_space_request(lowered):
         return _windows_disk_space_plan(windows_hosts)
 
+    if _looks_like_discovery_request(lowered):
+        return _windows_discovery_plan(windows_hosts)
+
     if _looks_like_disk_inventory_request(lowered):
         return _windows_disk_inventory_plan(windows_hosts)
 
@@ -42,6 +45,12 @@ def _looks_like_disk_space_request(lowered: str) -> bool:
         or "disk space" in lowered
         or ("how much free" in lowered and any(term in lowered for term in ("disk", "drive", "hd", "partition", "volume")))
     )
+
+
+def _looks_like_discovery_request(lowered: str) -> bool:
+    discovery_terms = ("discovery", "discover", "scan", "find", "who is on", "what devices")
+    network_terms = ("network", "local", "neighbors", "hosts", "devices")
+    return any(term in lowered for term in discovery_terms) and any(term in lowered for term in network_terms)
 
 
 def _looks_like_disk_inventory_request(lowered: str) -> bool:
@@ -108,6 +117,14 @@ def _windows_powershell_version_plan(hosts: list[Host]) -> ExecutionPlan:
         "$PSVersionTable.PSVersion | "
         "Select-Object Major,Minor,Build,Revision | ConvertTo-Json -Compress"
     )
+    return _single_inspect_plan(
+        hosts,
+        summary="Inspect the installed PowerShell version.",
+        title="Get PowerShell version",
+        command=command,
+        expected_signal="JSON object with PowerShell version fields",
+        validation_type="powershell_version_json",
+    )
 
 
 def _windows_github_cli_presence_plan(hosts: list[Host]) -> ExecutionPlan:
@@ -142,14 +159,6 @@ def _windows_github_cli_presence_plan(hosts: list[Host]) -> ExecutionPlan:
         expected_signal="JSON object showing whether GitHub CLI is installed and where it was found",
         validation_type="tool_presence_json",
     )
-    return _single_inspect_plan(
-        hosts,
-        summary="Inspect the installed PowerShell version.",
-        title="Get PowerShell version",
-        command=command,
-        expected_signal="JSON object with PowerShell version fields",
-        validation_type="powershell_version_json",
-    )
 
 
 def _windows_disk_space_plan(hosts: list[Host]) -> ExecutionPlan:
@@ -170,6 +179,19 @@ def _windows_disk_space_plan(hosts: list[Host]) -> ExecutionPlan:
         command=command,
         expected_signal="JSON array of fixed volumes with free-space fields",
         validation_type="disk_space_json",
+    )
+
+
+def _windows_discovery_plan(hosts: list[Host]) -> ExecutionPlan:
+    # Use arp -a as a robust baseline discovery command for Windows
+    command = "arp -a"
+    return _single_inspect_plan(
+        hosts,
+        summary="Perform network device discovery using ARP cache.",
+        title="Discover local network devices",
+        command=command,
+        expected_signal="ARP table showing IP and MAC addresses",
+        validation_type="text",
     )
 
 

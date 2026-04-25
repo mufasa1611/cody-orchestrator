@@ -1,10 +1,10 @@
 # CODEX (Cody) Roadmap & Tasks
 
-## 🎯 Phase 1: Reliability & Regression (Current Focus)
-- [ ] Implement **Transcript Testing Framework**: A system to run a request and verify the "Chain of Thought" and resulting commands.
-- [ ] Add **Mock LLM Provider**: Allow running tests without calling Ollama to ensure the orchestrator logic itself is solid.
-- [ ] **Retry Logic Stress Tests**: Verify that the Agentic Loop handles 1st-step failures correctly across different scenarios.
-- [ ] **Surgical Edit Validation**: Regression tests for `FileEditorTool` to ensure it never corrupts files if a string isn't found.
+## 🎯 Phase 1: Reliability & Behavioral Integrity (Current Focus)
+- [ ] **Transcript Regression Tests**: Add tests for the exact broken conversations (e.g., `nmap` failure, `echo` syntax errors).
+- [ ] **Orchestrator Fallback Retries**: Enhance the loop to try safe fallback specialists/paths instead of stopping at the first failure.
+- [ ] **Deterministic Routing Tightening**: Add more regex-based "Instant Handlers" for common requests to bypass the LLM planner.
+- [ ] **Strict Verification ("Don't Guess, Verify")**: Ensure all core handlers require a validation signal before claiming success.
 
 ## 🛡️ Phase 2: Professionalization (The "Quick Wins")
 - [ ] Add `LICENSE` (MIT).
