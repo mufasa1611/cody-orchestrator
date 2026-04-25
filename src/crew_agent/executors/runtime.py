@@ -14,17 +14,40 @@ from crew_agent.tools.web_search import WebSearchTool
 
 
 def _run_command(command: list[str], timeout: int) -> CommandResult:
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    return CommandResult(
-        returncode=completed.returncode,
-        stdout=completed.stdout.strip(),
-        stderr=completed.stderr.strip(),
-    )
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1  # Line buffered
+        )
+        
+        stdout_lines = []
+        # Stream stdout line by line
+        for line in iter(process.stdout.readline, ""):
+            trimmed = line.strip()
+            if trimmed:
+                # Use a special prefix that the UI can detect or just print it
+                # For now, we print it with a 'LIVE' tag
+                print(f"    [blue]STREAM:[/blue] {trimmed}")
+            stdout_lines.append(line)
+        
+        # Collect remaining output (stderr)
+        _, stderr = process.communicate(timeout=timeout)
+        
+        return CommandResult(
+            returncode=process.returncode,
+            stdout="".join(stdout_lines).strip(),
+            stderr=stderr.strip(),
+        )
+    except subprocess.TimeoutExpired:
+        process.kill()
+        return CommandResult(1, "", "Command timed out")
+    except Exception as e:
+        return CommandResult(1, "", f"Execution failed: {e}")
 
 
 def _execute_windows_local(command: str, timeout: int) -> CommandResult:

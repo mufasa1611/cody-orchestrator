@@ -281,11 +281,17 @@ def _looks_like_cleanup_request(lowered: str) -> bool:
 
 
 def _windows_cleanup_plan(hosts: list[Host]) -> ExecutionPlan:
-    # A safe command to clean up the user's temp folder on Windows
+    # Improved command to report what is being deleted
     command = (
-        "Get-ChildItem -Path $env:TEMP -Recurse -ErrorAction SilentlyContinue | "
-        "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue; "
-        "Write-Output 'Successfully cleaned Windows temp files.'"
+        "$files = Get-ChildItem -Path $env:TEMP -Recurse -ErrorAction SilentlyContinue; "
+        "$count = ($files | Measure-Object).Count; "
+        "if ($count -gt 0) { "
+        "  $files | ForEach-Object { Write-Output \"Deleting: $($_.FullName)\"; $_ } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue; "
+        "  Write-Output \"`nTotal items processed: $count\"; "
+        "  Write-Output 'Successfully cleaned Windows temp files.'; "
+        "} else { "
+        "  Write-Output 'No temp files found to clean.';"
+        "}"
     )
     steps = [
         PlanStep(
