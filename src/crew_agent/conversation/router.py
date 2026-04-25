@@ -112,6 +112,7 @@ TASK_CATEGORIES = {
     "package",
     "file",
     "code",
+    "other",
 }
 
 TASK_ACTIONS = {"inspect", "change"}
@@ -347,6 +348,8 @@ def _fallback_route(request: str) -> RouteDecision:
 
 def _looks_operational(text: str) -> bool:
     lowered = " ".join(text.casefold().split())
+    if any(term in lowered for term in ("search", "find", "locate", "where is")):
+        return True
     return _infer_action(lowered) in TASK_ACTIONS and (
         any(hint in lowered for hint in ACTION_HINTS) or _looks_install_check_request(lowered)
     )
