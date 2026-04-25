@@ -700,9 +700,13 @@ def _interactive_shell(ui: TerminalUI) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    print("DEBUG: Entering CLI main", file=sys.stderr)
     load_dotenv()
+    print("DEBUG: Dotenv loaded", file=sys.stderr)
     bootstrap_local_files()
+    print("DEBUG: Files bootstrapped", file=sys.stderr)
     ui = TerminalUI()
+    print("DEBUG: UI initialized", file=sys.stderr)
 
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
@@ -755,3 +759,7 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.print_help()
     return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
