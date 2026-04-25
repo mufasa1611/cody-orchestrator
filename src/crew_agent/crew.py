@@ -11,7 +11,7 @@ from crewai.utilities.task_output_storage_handler import TaskOutputStorageHandle
 from pydantic import PrivateAttr
 
 from crew_agent.llm import build_llm
-from crew_agent.tools import FileEditorTool, WebSearchTool, WindowsCommandTool
+from crew_agent.tools import DiscoveryTool, FileEditorTool, WebSearchTool, WindowsCommandTool
 
 
 def configure_local_storage() -> Path:
@@ -71,6 +71,7 @@ def build_windows_agent(
     cmd_tool = WindowsCommandTool(allow_unsafe=allow_unsafe)
     edit_tool = FileEditorTool()
     web_tool = WebSearchTool()
+    discovery_tool = DiscoveryTool()
     llm = build_llm(
         model=model,
         temperature=temperature,
@@ -81,16 +82,16 @@ def build_windows_agent(
         role="Windows automation operator",
         goal=(
             "Translate user requests into safe PowerShell commands, surgical file edits, "
-            "or web research steps, execute them when necessary, and explain the result clearly."
+            "web research steps, or network discovery, execute them when necessary, and explain the result clearly."
         ),
         backstory=(
             "You are a senior Windows administrator operating through a CLI. "
             "Use the windows_command tool for system tasks, file_editor for "
-            "precise code modifications, and web_search to find documentation or "
-            "solutions for complex errors. Summarize what happened concisely."
+            "precise code modifications, web_search to find documentation, and "
+            "discover_hosts to map the local network. Summarize what happened concisely."
         ),
         llm=llm,
-        tools=[cmd_tool, edit_tool, web_tool],
+        tools=[cmd_tool, edit_tool, web_tool, discovery_tool],
         allow_delegation=False,
         verbose=verbose,
     )

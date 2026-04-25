@@ -7,6 +7,7 @@ from typing import Callable
 from uuid import uuid4
 
 from crew_agent.core.answering import build_answer_summaries
+from crew_agent.core.memory import load_workspace_memory, save_step_to_history
 from crew_agent.core.models import ExecutionPlan, Host, StepExecutionResult
 from crew_agent.core.operator_mode import (
     should_show_step_command,
@@ -232,6 +233,10 @@ def run_request(
         results.append(result)
         
         if result.success:
+            save_step_to_history(
+                request=request,
+                summary=f"Step '{step.title}' succeeded on {host.name}. Result: {result.stdout[:200]}",
+            )
             if plan.raw.get("stop_after_first_success"):
                 ui.phase("thinking", f"{step.title} succeeded; stopping the specialist workflow")
                 break

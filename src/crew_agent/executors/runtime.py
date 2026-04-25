@@ -8,6 +8,7 @@ import time
 from crew_agent.core.models import AppConfig, CommandResult, Host, PlanStep, StepExecutionResult
 from crew_agent.policy.gates import guard_command
 from crew_agent.policy.validation import validate_step_stdout
+from crew_agent.tools.discovery import DiscoveryTool
 from crew_agent.tools.file_editor import FileEditorTool
 from crew_agent.tools.web_search import WebSearchTool
 
@@ -85,6 +86,14 @@ def _execute_web_search(query: str) -> CommandResult:
     return CommandResult(0, result, "")
 
 
+def _execute_discovery(subnet: str | None = None) -> CommandResult:
+    tool = DiscoveryTool()
+    result = tool._run(subnet=subnet)
+    if result.startswith("Error"):
+        return CommandResult(1, "", result)
+    return CommandResult(0, result, "")
+
+
 def execute_plan_step(
     step: PlanStep,
     host: Host,
@@ -97,6 +106,9 @@ def execute_plan_step(
         primary = _execute_edit(step.command)
     elif step.kind == "web_search":
         primary = _execute_web_search(step.command)
+    elif step.kind == "discovery":
+        # Note: subnet could be parsed from step.command if we wanted more precision
+        primary = _execute_discovery()
     else:
         guard_command(host, step.command, permission_mode=permission_mode)
         if host.platform == "windows" and host.transport == "local":

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+
+from crew_agent.core.paths import ensure_app_dirs
 
 
 DEFAULT_ASSISTANT_NAME = "Cody"
@@ -14,6 +18,7 @@ class WorkspaceMemory:
     assistant_name: str = DEFAULT_ASSISTANT_NAME
     user_name: str | None = None
     note_lines: tuple[str, ...] = ()
+    history_summaries: tuple[str, ...] = ()
 
 
 def get_memo_path(cwd: Path | None = None) -> Path:
@@ -23,12 +28,14 @@ def get_memo_path(cwd: Path | None = None) -> Path:
 
 def load_workspace_memory(cwd: Path | None = None) -> WorkspaceMemory:
     path = get_memo_path(cwd)
+    history = _load_history_summaries()
+    
     if not path.exists():
-        return WorkspaceMemory()
+        return WorkspaceMemory(history_summaries=history)
 
     text = _read_memo_text(path).strip()
     if not text:
-        return WorkspaceMemory()
+        return WorkspaceMemory(history_summaries=history)
 
     assistant_name = DEFAULT_ASSISTANT_NAME
     user_name: str | None = None
@@ -58,7 +65,38 @@ def load_workspace_memory(cwd: Path | None = None) -> WorkspaceMemory:
         assistant_name=assistant_name,
         user_name=user_name,
         note_lines=tuple(notes),
+        history_summaries=history,
     )
+
+
+def save_step_to_history(request: str, summary: str) -> None:
+    paths = ensure_app_dirs()
+    history_file = paths.runs_dir / "history.jsonl"
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "request": request,
+        "summary": summary,
+    }
+    with open(history_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def _load_history_summaries(limit: int = 10) -> tuple[str, ...]:
+    paths = ensure_app_dirs()
+    history_file = paths.runs_dir / "history.jsonl"
+    if not history_file.exists():
+        return ()
+    
+    summaries = []
+    try:
+        with open(history_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            for line in lines[-limit:]:
+                data = json.loads(line)
+                summaries.append(f"Previously ({data['timestamp']}): {data['summary']}")
+    except Exception:
+        pass
+    return tuple(summaries)
 
 
 def extract_assistant_name_assignment(request: str) -> str | None:

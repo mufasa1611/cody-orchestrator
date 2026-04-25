@@ -5,6 +5,7 @@ from typing import Any
 
 from crew_agent.agents import get_agent_definition
 from crew_agent.conversation.ollama import OllamaClient
+from crew_agent.core.memory import load_workspace_memory
 from crew_agent.core.models import AppConfig, ExecutionPlan, Host, PlanStep
 
 
@@ -23,6 +24,7 @@ Rules:
 - Inspection commands must emit useful stdout directly.
 - For surgical file edits, use the kind "edit" and provide the file_path, old_string, and new_string in the command block as a JSON-like structure or clear instructions for the executor.
 - Use the kind "web_search" and the search query as the command when you need to research documentation or error solutions. Assign these steps to the 'local-win' host or the first available host in the inventory.
+- Use the kind "discovery" when the user wants to scan the network or find other devices. Assign these steps to a local host.
 - Even if a request is purely research-based, you MUST provide at least one executable step.
 - Avoid placeholder or weak commands that return nothing.
 - Example Windows inspection command for PowerShell version:
@@ -50,7 +52,7 @@ Output schema:
       "id": "step-1",
       "title": "human title",
       "host": "host-1",
-      "kind": "inspect|change|edit|web_search|verify",
+      "kind": "inspect|change|edit|web_search|discovery|verify",
       "rationale": "why this step exists",
       "command": "actual command",
       "verify_command": "optional validation command",
@@ -206,6 +208,11 @@ def create_execution_plan(
     if not hosts:
         raise ValueError("No enabled hosts are available for planning.")
 
+    memory = load_workspace_memory()
+    history_context = ""
+    if memory.history_summaries:
+        history_context = "RECENT HISTORY:\n" + "\n".join(memory.history_summaries) + "\n\n"
+
     client = OllamaClient(
         model=config.model,
         base_url=config.base_url,
@@ -218,7 +225,7 @@ def create_execution_plan(
         },
         indent=2,
     )
-    planner_prompt = _planner_system_prompt()
+    planner_prompt = history_context + _planner_system_prompt()
     data = client.generate_json(planner_prompt, user_prompt)
     plan = _normalize_plan(data, hosts)
     plan = _repair_plan(plan, request, hosts)
