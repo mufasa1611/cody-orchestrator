@@ -1,10 +1,11 @@
 # CODEX (Cody) Roadmap & Tasks
 
-## 🎯 Phase 1: Reliability & Behavioral Integrity (Current Focus)
-- [ ] **Transcript Regression Tests**: Add tests for the exact broken conversations (e.g., `nmap` failure, `echo` syntax errors).
-- [ ] **Orchestrator Fallback Retries**: Enhance the loop to try safe fallback specialists/paths instead of stopping at the first failure.
-- [ ] **Deterministic Routing Tightening**: Add more regex-based "Instant Handlers" for common requests to bypass the LLM planner.
-- [ ] **Strict Verification ("Don't Guess, Verify")**: Ensure all core handlers require a validation signal before claiming success.
+## ✅ Phase 1: Reliability & Behavioral Integrity (COMPLETE)
+- [x] **Transcript Regression Tests**: Verified via `tests/regression/test_transcripts.py`.
+- [x] **Orchestrator Fallback Retries**: Increased resilience with 3x re-planning loop.
+- [x] **Deterministic Routing Tightening**: Added identity, discovery, and cleanup instant-handlers.
+- [x] **Strict Verification**: Mandated `verify_command` in planner instructions.
+- [x] **Live Backend Streaming**: Implemented line-by-line STDOUT streaming.
 
 ## 🛡️ Phase 2: Professionalization (The "Quick Wins")
 - [ ] Add `LICENSE` (MIT).
