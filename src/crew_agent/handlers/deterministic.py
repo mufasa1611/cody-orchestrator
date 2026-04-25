@@ -23,6 +23,9 @@ def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     if _looks_like_discovery_request(lowered):
         return _windows_discovery_plan(windows_hosts)
 
+    if _looks_like_cleanup_request(lowered):
+        return _windows_cleanup_plan(windows_hosts)
+
     if _looks_like_disk_inventory_request(lowered):
         return _windows_disk_inventory_plan(windows_hosts)
 
@@ -268,6 +271,47 @@ def _windows_shutdown_reason_plan(hosts: list[Host]) -> ExecutionPlan:
         command=command,
         expected_signal="JSON object or array with recent shutdown reasons from Event ID 1074",
         validation_type="event_log_json",
+    )
+
+
+def _looks_like_cleanup_request(lowered: str) -> bool:
+    cleanup_terms = ("cleanup", "clean up", "wipe", "delete", "remove", "clear")
+    target_terms = ("temp", "tmp", "cache", "logs", "junk")
+    return any(term in lowered for term in cleanup_terms) and any(term in lowered for term in target_terms)
+
+
+def _windows_cleanup_plan(hosts: list[Host]) -> ExecutionPlan:
+    # A safe command to clean up the user's temp folder on Windows
+    command = (
+        "Get-ChildItem -Path $env:TEMP -Recurse -ErrorAction SilentlyContinue | "
+        "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue; "
+        "Write-Output 'Successfully cleaned Windows temp files.'"
+    )
+    steps = [
+        PlanStep(
+            id=f"builtin-cleanup-{index}",
+            title="Clean up Windows temp files",
+            host=host.name,
+            kind="change",
+            rationale="Handled by Cody's built-in maintenance handler.",
+            command=command,
+            expected_signal="Success message from PowerShell",
+            validation_type="text",
+        )
+        for index, host in enumerate(hosts, start=1)
+    ]
+    return ExecutionPlan(
+        summary="Clean up temporary files from Windows hosts.",
+        planner_notes=["matched built-in deterministic maintenance handler"],
+        risk="medium",
+        domain="infra",
+        operation_class="change",
+        requires_confirmation=True,
+        requires_unsafe=False,
+        missing_information=[],
+        target_hosts=[host.name for host in hosts],
+        steps=steps,
+        raw={"builtin": True, "handler": "cleanup", "specialist": "workspace-operator"},
     )
 
 
