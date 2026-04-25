@@ -331,16 +331,15 @@ def _looks_like_search_request(lowered: str) -> bool:
 
 
 def _windows_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan:
-    # Extract filename from request (simple regex)
-    match = re.search(r"search (?:my )?([A-Za-z0-9._-]+)", request, re.IGNORECASE)
+    # Smarter extraction: Look for "for [filename]" or just the word after "search"
+    match = re.search(r"search (?:my )?(?:.* for )?([A-Za-z0-9._-]+)", request, re.IGNORECASE)
     filename = match.group(1) if match else "test.txt"
     
-    # Robust PowerShell search
+    # Use -ErrorAction SilentlyContinue but also wrap in a check to ensure exit 0 if results found
     command = (
         f"$file = '{filename}'; "
-        "Write-Output \"Searching for $file across C:\\...\"; "
-        "Get-ChildItem -Path C:\\ -Filter $file -Recurse -ErrorAction SilentlyContinue | "
-        "Select-Object -ExpandProperty FullName"
+        "$results = Get-ChildItem -Path C:\\ -Filter $file -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName; "
+        "if ($results) { $results; exit 0 } else { Write-Error \"File $file not found.\"; exit 1 }"
     )
     steps = [
         PlanStep(
@@ -352,6 +351,7 @@ def _windows_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan:
             command=command,
             expected_signal="Full path to the found file",
             validation_type="text",
+            accept_nonzero_returncode=True # Pro-tip: System folders will always throw errors
         )
         for index, host in enumerate(hosts, start=1)
     ]

@@ -176,7 +176,7 @@ def execute_plan_step(
         validation_source = verify.stdout if verify is not None else primary.stdout
         validation_error = validate_step_stdout(step, validation_source)
     success = (
-        (primary.returncode == 0 or step.accept_nonzero_returncode)
+        (primary.returncode == 0 or (step.accept_nonzero_returncode and primary.stdout.strip()))
         and (verify is None or verify.returncode == 0)
         and validation_error is None
     )

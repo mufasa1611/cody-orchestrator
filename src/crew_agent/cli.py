@@ -6,6 +6,9 @@ import shlex
 import sys
 
 from dotenv import load_dotenv
+from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import FileHistory
 
 from crew_agent.conversation.ollama import OllamaClient, normalize_base_url
 from crew_agent.conversation.router import route_request
@@ -589,14 +592,30 @@ def _interactive_shell(ui: TerminalUI) -> int:
     bootstrap_local_files()
     config = load_config()
     inventory = load_inventory()
+    paths = ensure_app_dirs()
     ui.banner(
         f"interactive shell ready\nmodel={config.model} enabled_hosts={len([h for h in inventory if h.enabled])}"
     )
     _show_shell_help(ui)
 
+    # 1. Prepare completion list for / commands
+    slash_commands = [
+        "/help", "/doctor", "/hosts", "/status", "/model", "/permissions", 
+        "/approvals", "/agents", "/backup", "/runs", "/exit", "/quit"
+    ]
+    completer = WordCompleter(slash_commands, ignore_case=True)
+    
+    # 2. Setup history and session
+    history_file = paths.root / "history.txt"
+    session = PromptSession(
+        history=FileHistory(str(history_file)),
+        completer=completer,
+        complete_while_typing=True
+    )
+
     while True:
         try:
-            request = input("codex> ").strip().lstrip("\ufeff")
+            request = session.prompt("codex> ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
