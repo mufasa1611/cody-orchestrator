@@ -283,9 +283,11 @@ def run_request(
     )
     ui.show_answer_summaries(build_answer_summaries(plan, results))
     ui.show_run_summary(results, str(log_path))
-    blocking_failures = [
-        (step, result)
-        for step, result in zip(plan.steps[: len(results)], results)
-        if not result.success and not step.continue_on_failure
-    ]
-    return 0 if results and not blocking_failures and any(result.success for result in results) else 1
+    
+    # Logic fix: A failure is only "blocking" if it wasn't recovered by re-planning
+    # In the current loop, we stop on a blocking failure. If we successfully finished the loop, 
+    # then any intermediate failures were either recovered or 'continue_on_failure' was true.
+    # So we check if the VERY LAST result was a success.
+    
+    last_success = results[-1].success if results else False
+    return 0 if last_success else 1
