@@ -596,7 +596,7 @@ def _interactive_shell(ui: TerminalUI) -> int:
 
     while True:
         try:
-            request = input("cody> ").strip().lstrip("\ufeff")
+            request = input("codex> ").strip().lstrip("\ufeff")
         except (EOFError, KeyboardInterrupt):
             print()
             return 0

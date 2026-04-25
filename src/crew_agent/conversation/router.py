@@ -66,6 +66,10 @@ ACTION_HINTS = (
     "exists",
     "install",
     "remove",
+    "delete",
+    "cleanup",
+    "clean up",
+    "wipe",
     "disk",
     "drive",
     "partition",
@@ -366,7 +370,7 @@ def _infer_action(text: str) -> str:
         return "inspect"
     if _looks_like_shutdown_reason_query(lowered):
         return "inspect"
-    if any(word in lowered for word in ("create", "write", "save", "make", "insert", "append", "edit", "modify", "replace", "remember", "restart", "start", "stop", "install", "remove", "delete", "disable", "enable", "set", "update", "change")):
+    if any(word in lowered for word in ("create", "write", "save", "make", "insert", "append", "edit", "modify", "replace", "remember", "restart", "start", "stop", "install", "remove", "delete", "disable", "enable", "set", "update", "change", "cleanup", "clean up", "wipe")):
         return "change"
     return "unknown"
 
