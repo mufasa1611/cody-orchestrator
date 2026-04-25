@@ -212,7 +212,7 @@ def create_execution_plan(
     memory = load_workspace_memory()
     history_context = ""
     if memory.history_summaries:
-        history_context = "RECENT HISTORY:\n" + "\n".join(memory.history_summaries) + "\n\n"
+        history_context = "### RECENT HISTORY (FOR CONTEXT):\n" + "\n".join(memory.history_summaries) + "\n\n"
 
     client = OllamaClient(
         model=config.model,
@@ -226,7 +226,7 @@ def create_execution_plan(
         },
         indent=2,
     )
-    planner_prompt = history_context + _planner_system_prompt()
+    planner_prompt = history_context + _planner_system_prompt() + "\n\nIMPORTANT: Return ONLY the JSON object. Do not include any conversational filler."
     data = client.generate_json(planner_prompt, user_prompt)
     plan = _normalize_plan(data, hosts)
     plan = _repair_plan(plan, request, hosts)

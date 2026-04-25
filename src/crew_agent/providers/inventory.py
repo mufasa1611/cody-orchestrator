@@ -60,8 +60,21 @@ def _read_yaml(path) -> dict[str, Any]:
 def bootstrap_local_files() -> None:
     paths = ensure_app_dirs()
     if not paths.config_file.exists():
+        config_to_save = dict(DEFAULT_CONFIG)
+        
+        # Only run wizard if we are in an interactive terminal
+        import sys
+        if sys.stdout.isatty():
+            try:
+                from crew_agent.setup_wizard import run_setup_wizard
+                selected_model = run_setup_wizard()
+                if selected_model:
+                    config_to_save["model"] = selected_model
+            except Exception as e:
+                print(f"Wizard error: {e}")
+                
         paths.config_file.write_text(
-            yaml.safe_dump(DEFAULT_CONFIG, sort_keys=False),
+            yaml.safe_dump(config_to_save, sort_keys=False),
             encoding="utf-8",
         )
     if not paths.inventory_file.exists():

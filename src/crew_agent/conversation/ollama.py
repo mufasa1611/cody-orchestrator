@@ -62,10 +62,30 @@ class OllamaClient:
         )
         response.raise_for_status()
         body = response.json()
-        raw = body.get("response", "{}")
-        data = json.loads(raw)
+        raw = body.get("response", "").strip()
+        
+        if not raw:
+            raise ValueError(f"LLM model '{self.model}' returned an empty response.")
+            
+        # Robust parsing: Find the first { and last } to handle possible markdown wrapping
+        start = raw.find('{')
+        end = raw.rfind('}')
+        if start != -1 and end != -1 and end > start:
+            json_str = raw[start : end + 1]
+        else:
+            json_str = raw
+
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Failed to parse JSON from model '{self.model}'.\n"
+                f"Raw Response: {raw[:500]}\n"
+                f"Error: {e}"
+            )
+            
         if not isinstance(data, dict):
-            raise ValueError("Planner did not return a JSON object")
+            raise ValueError(f"Planner did not return a JSON object. Got: {type(data).__name__}")
         return data
 
 
