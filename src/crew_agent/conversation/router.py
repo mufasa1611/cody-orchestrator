@@ -253,7 +253,9 @@ def validate_route_decision(decision: RouteDecision, original_request: str) -> R
         return None
 
     normalized = decision.normalized_request or original_request
-    if decision.needs_clarification:
+    
+    # NEW PRO LOGIC: If it looks like a task, ignore the 'needs_clarification' flag
+    if decision.needs_clarification and not _looks_task_like_request(original_request):
         return RouteDecision(
             kind="reject",
             message="That request is not specific enough to execute safely. Rephrase it as a concrete infrastructure task.",
@@ -261,12 +263,19 @@ def validate_route_decision(decision: RouteDecision, original_request: str) -> R
             confidence=decision.confidence,
             raw=decision.raw,
         )
-    if decision.action not in TASK_ACTIONS:
+    
+    # If the action is unknown but it looks task-like, force 'inspect'
+    action = decision.action
+    if action not in TASK_ACTIONS and _looks_task_like_request(original_request):
+        action = _infer_action(original_request)
+
+    if action not in TASK_ACTIONS:
         return None
-    if decision.task_category not in TASK_CATEGORIES and not _looks_operational(normalized):
+    
+    # Final pass: If it looks operational, let it through
+    if not (decision.task_category in TASK_CATEGORIES or _looks_operational(normalized)):
         return None
-    if not _looks_operational(normalized):
-        return None
+
     return RouteDecision(
         kind="task",
         message=decision.message,
@@ -274,7 +283,7 @@ def validate_route_decision(decision: RouteDecision, original_request: str) -> R
         reason=decision.reason,
         confidence=decision.confidence,
         task_category=decision.task_category,
-        action=decision.action,
+        action=action,
         target_hint=decision.target_hint,
         needs_clarification=False,
         raw=decision.raw,

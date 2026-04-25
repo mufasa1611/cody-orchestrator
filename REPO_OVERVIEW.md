@@ -1,60 +1,41 @@
-# cody-cli Repository Overview
+# Codex Repository Overview
 
-`cody-cli` is a local-first command-line agent shell for Cody.
+`codex` (formerly cody-cli) is a professional autonomous infrastructure orchestrator shell.
 
 It combines:
-
-- deterministic handlers for common tasks
-- local specialist agent definition files
-- a planner fallback for broader infrastructure requests
-- approval and validation gates around execution
-- a terminal UI that shows both plans and backend tool output
+- **Long-term SQLite Memory**: Persistent storage of every run and step for cross-session context.
+- **Agentic Loop**: Autonomous re-planning and error recovery logic.
+- **Parallel Fleet Execution**: Concurrent multi-host task management.
+- **Deterministic Handlers**: Fast, reliable automation for common infrastructure tasks.
+- **Terminal UI**: Live backend streaming and rich result panels.
 
 ## What This Repo Contains
 
-- `src/crew_agent/conversation/`
-  Front-door routing, chat/task classification, and model adapters.
-- `src/crew_agent/handlers/`
-  Deterministic task handlers, planner integration, orchestrator flow, and workspace logic.
-- `src/crew_agent/agents/definitions/`
-  Local specialist agent files such as `file-reader`, `repo-searcher`, `workspace-operator`, and `infra-planner`.
-- `src/crew_agent/executors/`
-  Command execution runtime for Windows local execution and remote transports.
-- `src/crew_agent/policy/`
-  Approval gates, validation, and execution safety checks.
-- `src/crew_agent/core/`
-  Shared models, paths, memory, and terminal UI helpers.
-- `tests/`
-  Regression coverage for memory, routing, workspace behavior, search, testing, approvals, and specialist workflows.
+- `src/crew_agent/conversation/`: Routing, classification, and Ollama model adapters.
+- `src/crew_agent/handlers/`: Orchestrator flow, deterministic handlers, and LLM planning integration.
+- `src/crew_agent/executors/`: Execution runtime (Local, SSH, WinRM) with live STDOUT streaming.
+- `src/crew_agent/core/`: Database (SQLite) logic, shared models, paths, and Terminal UI.
+- `src/crew_agent/agents/definitions/`: Specialist agent metadata files.
+- `tests/`: Unit and regression test suite verifying core reliability.
 
 ## Current Behavior
 
-This version of Cody can:
+Codex is designed to be decisive and robust:
+- **Smarter Routing**: Forced task acceptance for keywords like "search" and "find".
+- **Dynamic Discovery**: Automatic network mapping with OS detection.
+- **Precision Edits**: Surgical file modification system.
+- **Transparent Execution**: Live "STREAM" output before the final results panel.
 
-- route requests to local specialist handlers before falling back to the planner
-- remember stable workspace facts and recall them deterministically
-- read files from the workspace and common user folders with fallback search
-- search repository code with richer `ripgrep` output
-- run tests and summarize failures as useful inspection output
-- edit simple local workspace files with deterministic fallback location handling
-- show backend stdout and stderr in a higher-visibility terminal UI
+## CLI Exposure
 
-## Important Design Choice
+The repository package remains `crew_agent` for stability, but the primary user command is:
+- **`codex`**
 
-The repository name is `cody-cli`, but the internal Python package currently remains under `crew_agent`.
+## State & Data
 
-That keeps the current code layout stable while exposing the user-facing CLI as:
+- **Database**: `codex.db` stores all historical knowledge.
+- **Logs**: Detailed execution JSON logs under `.cody/runs/`.
+- **Backups**: Zip snapshots of target hosts under `.cody/backups/`.
 
-- `cody`
-- `crew-agent`
-
-## Local Runtime State
-
-This repo keeps user/runtime state under `.cody/`, but generated run logs, backups, temporary test artifacts, and ephemeral state files are excluded from version control.
-
-## Recommended Next Steps
-
-- add autonomous code-edit loops with patch/retest/retry behavior
-- expand structured memory and cross-task reference resolution
-- add richer specialist workflows beyond single-pass execution
-- improve planner repair logic and recovery from weak model output
+---
+*Created by Mufasa (M. Farid)*
