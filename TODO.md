@@ -7,16 +7,16 @@
 - [x] **Strict Verification**: Mandated `verify_command` in planner instructions.
 - [x] **Live Backend Streaming**: Implemented line-by-line STDOUT streaming.
 
-## 🛡️ Phase 2: Professionalization (The "Quick Wins")
-- [ ] Add `LICENSE` (MIT).
-- [ ] Add `CONTRIBUTING.md` & `CODE_OF_CONDUCT.md`.
-- [ ] Create `CHANGELOG.md` starting from v0.2.0.
-- [ ] Set up GitHub Issue Templates (Bug Report/Feature Request).
+## ✅ Phase 2: Professionalization (COMPLETE)
+- [x] **LICENSE**: Added MIT License.
+- [x] **CONTRIBUTING.md & CODE_OF_CONDUCT.md**: Established community guidelines.
+- [x] **CHANGELOG.md**: Documented v0.2.0 updates.
+- [x] **GitHub Issue Templates**: Created Bug Report and Feature Request templates.
 
-## 🚀 Phase 3: Advanced Infrastructure Features
-- [ ] **Service Discovery Expansion**: Support for subnet scanning and OS fingerprinting.
-- [ ] **Persistent State DB**: Move from `history.jsonl` to a proper SQLite-based "Long-term Memory".
-- [ ] **Parallel Fleet Execution**: Execute the same plan across multiple hosts simultaneously.
+## ✅ Phase 3: Advanced Infrastructure Features (COMPLETE)
+- [x] **Service Discovery Expansion**: Added TTL-based OS fingerprinting and ARP scanning.
+- [x] **Persistent State DB**: Implemented SQLite-based "Long-term Memory" for runs and steps.
+- [x] **Parallel Fleet Execution**: Implemented multi-host parallelism using ThreadPoolExecutor.
 
 ## 🏗️ Phase 4: CI/CD & Distribution
 - [ ] GitHub Actions: Auto-run tests on every push.

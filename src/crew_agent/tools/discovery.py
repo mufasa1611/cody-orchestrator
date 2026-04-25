@@ -8,45 +8,43 @@ from crewai.tools import BaseTool
 class DiscoveryTool(BaseTool):
     name: str = "discover_hosts"
     description: str = (
-        "Scan the local network to discover other hosts/devices. "
-        "Returns a list of IP addresses and MAC addresses found."
+        "Scan the local network to discover other hosts and attempt to identify their OS. "
+        "Returns a list of IP addresses, MAC addresses, and OS hints."
     )
 
     def _run(self, subnet: str | None = None) -> str:
-        # On Windows, we can use Get-NetNeighbor to see local network devices
-        cmd = [
-            "powershell.exe",
-            "-NoProfile",
-            "-Command",
-            "Get-NetNeighbor -AddressFamily IPv4 | "
-            "Where-Object { $_.State -ne 'Unreachable' } | "
-            "Select-Object IPAddress, LinkLayerAddress, State | "
-            "ConvertTo-Json -Compress"
-        ]
+        # 1. Get neighbors from ARP cache
+        arp_cmd = ["powershell.exe", "-NoProfile", "-Command", 
+                   "Get-NetNeighbor -AddressFamily IPv4 | Where-Object { $_.State -ne 'Unreachable' } | Select-Object IPAddress, LinkLayerAddress | ConvertTo-Json -Compress"]
         
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode != 0:
-                return f"Error running discovery: {result.stderr}"
-            
-            if not result.stdout.strip():
-                return "No neighbors found on the network."
-            
-            try:
-                data = json.loads(result.stdout)
-                if isinstance(data, dict):
-                    data = [data]
+            arp_result = subprocess.run(arp_cmd, capture_output=True, text=True, timeout=15)
+            neighbors = []
+            if arp_result.returncode == 0 and arp_result.stdout.strip():
+                data = json.loads(arp_result.stdout)
+                neighbors = data if isinstance(data, list) else [data]
+
+            if not neighbors:
+                return "No devices found in local ARP cache."
+
+            output = ["Discovered Infrastructure:"]
+            for n in neighbors[:10]: # Limit to first 10 for speed
+                ip = n.get("IPAddress")
+                mac = n.get("LinkLayerAddress")
                 
-                output = ["Discovered Neighbors:"]
-                for item in data:
-                    ip = item.get("IPAddress")
-                    mac = item.get("LinkLayerAddress")
-                    state = item.get("State")
-                    output.append(f"- IP: {ip}, MAC: {mac}, State: {state}")
+                # 2. Attempt OS Fingerprinting via TTL (simple but fast)
+                # TTL 128 = Windows, TTL 64 = Linux/Mac
+                ping_cmd = ["ping", "-n", "1", "-w", "500", ip]
+                ping_proc = subprocess.run(ping_cmd, capture_output=True, text=True)
+                os_hint = "Unknown"
+                if "TTL=128" in ping_proc.stdout:
+                    os_hint = "Windows"
+                elif "TTL=64" in ping_proc.stdout:
+                    os_hint = "Linux/Unix"
                 
-                return "\n".join(output)
-            except json.JSONDecodeError:
-                return f"Raw Output:\n{result.stdout}"
+                output.append(f"- IP: {ip} | MAC: {mac} | OS Hint: {os_hint}")
+            
+            return "\n".join(output)
                 
         except Exception as e:
             return f"Discovery failed: {e}"

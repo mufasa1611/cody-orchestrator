@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from crew_agent.core.db import get_recent_history_context
 from crew_agent.core.paths import ensure_app_dirs
 
 
@@ -28,7 +29,7 @@ def get_memo_path(cwd: Path | None = None) -> Path:
 
 def load_workspace_memory(cwd: Path | None = None) -> WorkspaceMemory:
     path = get_memo_path(cwd)
-    history = _load_history_summaries()
+    history = tuple(get_recent_history_context(limit=10))
     
     if not path.exists():
         return WorkspaceMemory(history_summaries=history)

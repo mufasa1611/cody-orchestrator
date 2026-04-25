@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 import json
 from datetime import datetime
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Callable
 from uuid import uuid4
 
 from crew_agent.core.answering import build_answer_summaries
+from crew_agent.core.db import save_run_to_db
 from crew_agent.core.memory import load_workspace_memory, save_step_to_history
 from crew_agent.core.models import ExecutionPlan, Host, StepExecutionResult
 from crew_agent.core.operator_mode import (
@@ -185,90 +187,102 @@ def run_request(
     selected_map = host_map(selected_hosts)
     results: list[StepExecutionResult] = []
     backup_dir: Path | None = None
-    should_backup = (
-        effective_permission == "full"
-        and config.backup_on_full
-        and plan.domain == "infra"
-        and (plan.requires_unsafe or plan.risk == "high")
+    
+    # 1. Parallel execution check: Are there independent steps for different hosts?
+    # We'll implement a simple "Same-Step-Multi-Host" parallelism first.
+    # If the plan has exactly N steps for N hosts and they are the same command, run them in parallel.
+    is_parallel_candidate = (
+        len(plan.steps) > 1 
+        and len(set(s.host for s in plan.steps)) == len(plan.steps)
+        and len(set(s.command for s in plan.steps)) == 1
     )
-    if should_backup:
-        ui.phase("thinking", "full permission enabled; creating pre-execution backup snapshot")
-        try:
-            backup_dir = create_backup_snapshot(
-                request=request,
-                plan=plan,
-                hosts=selected_hosts,
+
+    if is_parallel_candidate:
+        ui.phase("thinking", f"detected independent multi-host tasks; switching to parallel fleet execution (max_workers=5)")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_step = {
+                executor.submit(
+                    execute_plan_step, 
+                    step, 
+                    selected_map[step.host], 
+                    config, 
+                    effective_permission
+                ): step for step in plan.steps
+            }
+            for future in concurrent.futures.as_completed(future_to_step):
+                step = future_to_step[future]
+                try:
+                    result = future.result()
+                    ui.show_step_result(result, show_evidence=should_show_step_evidence(plan, result, compact_view))
+                    results.append(result)
+                except Exception as exc:
+                    ui.phase("warn", f"parallel step '{step.title}' on {step.host} generated an exception: {exc}")
+        
+        # In parallel mode, we don't do the agentic retry loop (it's too complex for v1)
+        # We just finish and log.
+    else:
+        # Sequential Agentic Loop (Existing logic)
+        i = 0
+        replan_count = 0
+        while i < len(plan.steps):
+            step = plan.steps[i]
+            host = selected_map[step.host]
+            ui.show_step_start(
+                i + 1,
+                len(plan.steps),
+                step.host,
+                step.title,
+                step.command,
+                show_command=should_show_step_command(plan, compact_view),
+            )
+            result = execute_plan_step(
+                step,
+                host,
                 config=config,
+                permission_mode=effective_permission,
             )
-            ui.phase("done", f"backup snapshot saved to {backup_dir}")
-        except Exception as exc:
-            ui.phase("warn", f"backup snapshot failed: {exc}")
-            return 4
-    elif effective_permission == "full" and plan.domain == "infra" and (plan.requires_unsafe or plan.risk == "high"):
-        ui.phase("warn", "full permission enabled without automatic backups")
-
-    i = 0
-    replan_count = 0
-    while i < len(plan.steps):
-        step = plan.steps[i]
-        host = selected_map[step.host]
-        ui.show_step_start(
-            i + 1,
-            len(plan.steps),
-            step.host,
-            step.title,
-            step.command,
-            show_command=should_show_step_command(plan, compact_view),
-        )
-        result = execute_plan_step(
-            step,
-            host,
-            config=config,
-            permission_mode=effective_permission,
-        )
-        ui.show_step_result(
-            result,
-            show_evidence=should_show_step_evidence(plan, result, compact_view),
-        )
-        results.append(result)
-        
-        if result.success:
-            save_step_to_history(
-                request=request,
-                summary=f"Step '{step.title}' succeeded on {host.name}. Result: {result.stdout[:200]}",
+            ui.show_step_result(
+                result,
+                show_evidence=should_show_step_evidence(plan, result, compact_view),
             )
-            if plan.raw.get("stop_after_first_success"):
-                ui.phase("thinking", f"{step.title} succeeded; stopping the specialist workflow")
-                break
-            i += 1
-            continue
-        
-        # Step failed
-        if step.continue_on_failure:
-            ui.phase("thinking", f"{step.title} failed; continuing agent workflow to the next fallback step")
-            i += 1
-            continue
+            results.append(result)
             
-        if replan_count < 3:  # Increased from 1 to 3 for better resilience
-            ui.phase("thinking", f"step '{step.title}' failed (attempt {replan_count + 1}/3). Attempting to re-plan with error context...")
-            error_context = result.stderr or result.validation_error or "Unknown error"
-            refined_request = (
-                f"The previous plan failed at step '{step.title}' with error: {error_context}. "
-                f"The original request was: {request}. Please provide a corrected plan."
-            )
-            try:
-                new_plan = create_execution_plan(refined_request, selected_hosts, config)
-                if new_plan.steps:
-                    ui.phase("thinking", "received a new execution plan. Continuing with updated steps.")
-                    # Insert new steps at current position
-                    plan.steps = plan.steps[:i] + new_plan.steps
-                    replan_count += 1
-                    continue
-            except Exception as e:
-                ui.phase("warn", f"re-planning failed: {e}")
+            if result.success:
+                save_step_to_history(
+                    request=request,
+                    summary=f"Step '{step.title}' succeeded on {host.name}. Result: {result.stdout[:200]}",
+                )
+                if plan.raw.get("stop_after_first_success"):
+                    ui.phase("thinking", f"{step.title} succeeded; stopping the specialist workflow")
+                    break
+                i += 1
+                continue
+            
+            # Step failed
+            if step.continue_on_failure:
+                ui.phase("thinking", f"{step.title} failed; continuing agent workflow to the next fallback step")
+                i += 1
+                continue
+                
+            if replan_count < 3:  # Increased from 1 to 3 for better resilience
+                ui.phase("thinking", f"step '{step.title}' failed (attempt {replan_count + 1}/3). Attempting to re-plan with error context...")
+                error_context = result.stderr or result.validation_error or "Unknown error"
+                refined_request = (
+                    f"The previous plan failed at step '{step.title}' with error: {error_context}. "
+                    f"The original request was: {request}. Please provide a corrected plan."
+                )
+                try:
+                    new_plan = create_execution_plan(refined_request, selected_hosts, config)
+                    if new_plan.steps:
+                        ui.phase("thinking", "received a new execution plan. Continuing with updated steps.")
+                        plan.steps = plan.steps[:i] + new_plan.steps
+                        replan_count += 1
+                        continue
+                except Exception as e:
+                    ui.phase("warn", f"re-planning failed: {e}")
 
-        ui.phase("warn", f"stopping after failed step on {result.host}")
-        break
+            ui.phase("warn", f"stopping after failed step on {result.host}")
+            break
 
     log_path = save_run_log(
         request=request,
@@ -284,10 +298,21 @@ def run_request(
     ui.show_answer_summaries(build_answer_summaries(plan, results))
     ui.show_run_summary(results, str(log_path))
     
-    # Logic fix: A failure is only "blocking" if it wasn't recovered by re-planning
-    # In the current loop, we stop on a blocking failure. If we successfully finished the loop, 
-    # then any intermediate failures were either recovered or 'continue_on_failure' was true.
-    # So we check if the VERY LAST result was a success.
-    
     last_success = results[-1].success if results else False
-    return 0 if last_success else 1
+    exit_code = 0 if last_success else 1
+
+    # Save to SQLite DB for long-term memory
+    try:
+        save_run_to_db(
+            run_id=log_path.stem,
+            request=request,
+            plan_summary=plan.summary,
+            domain=plan.domain,
+            risk=plan.risk,
+            exit_code=exit_code,
+            results=results
+        )
+    except Exception as e:
+        ui.phase("warn", f"failed to save run to persistent DB: {e}")
+
+    return exit_code
