@@ -21,9 +21,13 @@ Rules:
 - Prefer inspection commands first when the user asks to "check", "show", "list", "status", or "version".
 - For Windows hosts, produce PowerShell command text only. Do not wrap it in "powershell -Command".
 - IMPORTANT: Never use CMD.exe style flags (e.g., dir /s, del /f, copy /y). Use native PowerShell cmdlets (e.g., Get-ChildItem -Recurse, Remove-Item -Force, Copy-Item).
+- For recursive file searches on Windows, always check if results were found and exit 0 if output exists, even if minor errors (like Access Denied) occurred.
 - For Linux hosts, produce shell commands that can run through "bash -lc".
 - Inspection commands must emit useful stdout directly.
-- For surgical file edits, use the kind "edit" and provide the file_path, old_string, and new_string in the command block as a JSON-like structure or clear instructions for the executor.
+- For surgical file edits, use the kind "edit".
+- IMPORTANT: The command for an "edit" step MUST be a valid JSON object using DOUBLE QUOTES (").
+- Example edit command: {"file_path": "path/to/file.py", "old_string": "old text", "new_string": "new text"}
+- Never use single quotes (') for JSON keys or string values in the command block.
 - Use the kind "web_search" and the search query as the command when you need to research documentation or error solutions. Assign these steps to the 'local-win' host or the first available host in the inventory.
 - Use the kind "discovery" when the user wants to scan the network or find other devices. Assign these steps to a local host.
 - Even if a request is purely research-based, you MUST provide at least one executable step.

@@ -18,12 +18,13 @@ class AnswerSummary:
 def build_answer_summaries(
     plan: ExecutionPlan,
     results: list[StepExecutionResult],
+    ui: TerminalUI | None = None,
 ) -> list[AnswerSummary]:
     summaries: list[AnswerSummary] = []
     for result in results:
         if not result.success:
             continue
-        summary = _build_result_summary(plan, result)
+        summary = _build_result_summary(plan, result, ui)
         if summary is not None:
             summaries.append(summary)
     return summaries
@@ -32,7 +33,13 @@ def build_answer_summaries(
 def _build_result_summary(
     plan: ExecutionPlan,
     result: StepExecutionResult,
+    ui: TerminalUI | None = None,
 ) -> AnswerSummary | None:
+    def link(text: str, path: str) -> str:
+        if ui and hasattr(ui, "_make_link"):
+            return ui._make_link(text, path)
+        return text
+
     stdout = result.stdout.strip()
     stderr = result.stderr.strip()
     combined_output = "\n".join(part for part in (stdout, stderr) if part).strip()
@@ -41,12 +48,13 @@ def _build_result_summary(
     if validation_type == "workspace_file_info_json":
         payload = _load_json(stdout)
         if isinstance(payload, dict):
+            p = payload.get('Path', '-')
             return AnswerSummary(
                 title="Result",
                 lines=[
                     f"Created file: {payload.get('Name', '-')}",
                     f"Folder: {payload.get('Parent', '-')}",
-                    f"Path: {payload.get('Path', '-')}",
+                    f"Path: {link(p, p)}",
                 ],
             )
 
@@ -198,6 +206,20 @@ def _build_result_summary(
                     f"{payload.get('Major', '-')}.{payload.get('Minor', '-')}.{payload.get('Build', '-')}.{payload.get('Revision', '-')}"
                 ],
             )
+
+    if validation_type == "grep_json":
+        payload = _load_json(stdout)
+        items = payload if isinstance(payload, list) else [payload]
+        rows = [item for item in items if isinstance(item, dict)]
+        if rows:
+            unique_files = sorted(list(set(row.get("File") for row in rows if row.get("File"))))
+            lines = [f"Found {len(rows)} matches in {len(unique_files)} file(s):"]
+            for f in unique_files[:3]:
+                lines.append(f"- {f}")
+            if len(unique_files) > 3:
+                lines.append(f"... and {len(unique_files) - 3} more files.")
+            return AnswerSummary(title="Answer", lines=lines)
+        return AnswerSummary(title="Answer", lines=["No content matches found."])
 
     if result.artifact_path:
         return AnswerSummary(title="Answer", lines=[result.artifact_path])

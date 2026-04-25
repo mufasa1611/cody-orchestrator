@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
+import subprocess
 import sys
+import time
 
 from dotenv import load_dotenv
+from rich.panel import Panel
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
@@ -718,14 +722,61 @@ def _interactive_shell(ui: TerminalUI) -> int:
         )
 
 
+def _check_for_updates(ui: TerminalUI) -> None:
+    """Check if the local repo is behind the remote and notify the user."""
+    try:
+        # 1. Quick check if we are in a git repo
+        if not os.path.exists(".git"):
+            return
+
+        # 2. Check if we've already checked today to keep startup fast
+        paths = ensure_app_dirs()
+        sentinel = paths.root / ".last_update_check"
+        if sentinel.exists():
+            last_check = sentinel.stat().st_mtime
+            # If checked in the last 24 hours, skip
+            if (time.time() - last_check) < 86400:
+                return
+
+        # 3. Run git fetch quietly
+        subprocess.run(["git", "fetch"], capture_output=True, timeout=5)
+        
+        # 4. Compare local branch to remote tracking branch
+        # Get count of commits we are behind
+        res = subprocess.run(
+            ["git", "rev-list", "HEAD..origin/main", "--count"],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        
+        if res.returncode == 0:
+            count_str = res.stdout.strip()
+            if count_str and count_str.isdigit():
+                count = int(count_str)
+                if count > 0:
+                    ui.console.print(Panel(
+                        f"[bold yellow]Update Available![/bold yellow]\n"
+                        f"Codex is [cyan]{count}[/cyan] commits behind origin/main.\n"
+                        f"Run [bold green]git pull[/bold green] to get the latest features and fixes.",
+                        border_style="yellow",
+                        expand=False
+                    ))
+        
+        # Update the sentinel timestamp
+        sentinel.touch()
+    except Exception:
+        # Never crash the main app because of an update check failure
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
-    print("DEBUG: Entering CLI main", file=sys.stderr)
     load_dotenv()
-    print("DEBUG: Dotenv loaded", file=sys.stderr)
     bootstrap_local_files()
-    print("DEBUG: Files bootstrapped", file=sys.stderr)
     ui = TerminalUI()
-    print("DEBUG: UI initialized", file=sys.stderr)
+    
+    # NEW: Check for updates on startup
+    _check_for_updates(ui)
 
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:

@@ -295,11 +295,17 @@ def run_request(
         approval_reasons=approval_reasons,
         backup_path=str(backup_dir) if backup_dir is not None else None,
     )
-    ui.show_answer_summaries(build_answer_summaries(plan, results))
+    ui.show_answer_summaries(build_answer_summaries(plan, results, ui))
     ui.show_run_summary(results, str(log_path))
     
-    last_success = results[-1].success if results else False
-    exit_code = 0 if last_success else 1
+    # Calculate final exit code correctly
+    exit_code = 0
+    if results:
+        # Success if the VERY LAST result is successful (all steps or recovered steps)
+        exit_code = 0 if results[-1].success else 1
+    else:
+        # No results = failure
+        exit_code = 1
 
     # Save to SQLite DB for long-term memory
     try:

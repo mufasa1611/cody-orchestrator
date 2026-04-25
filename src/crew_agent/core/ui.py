@@ -21,6 +21,13 @@ class TerminalUI:
         self.console = Console()
         self.last_workspace_artifact_path = self._load_last_workspace_artifact_path()
 
+    def _make_link(self, text: str, path: str) -> str:
+        """Create a terminal-compatible hyperlink (OSC 8)."""
+        # Convert path to a proper file URI for maximum compatibility
+        import pathlib
+        uri = Path(path).resolve().as_uri()
+        return f"[link={uri}]{text}[/link]"
+
     def banner(self, subtitle: str | None = None) -> None:
         text = "Autonomous Infrastructure Orchestrator created by Mufasa (M.Farid)"
         if subtitle:
@@ -172,8 +179,17 @@ class TerminalUI:
         if not result.stdout or not result.validation_type:
             return False
 
+        # PRO JSON EXTRACTION: Find JSON even if there is prefix/suffix text
+        raw = result.stdout.strip()
+        start = raw.find('[') if raw.find('[') != -1 and (raw.find('{') == -1 or raw.find('[') < raw.find('{')) else raw.find('{')
+        end = raw.rfind(']') if raw.rfind(']') != -1 and (raw.rfind('}') == -1 or raw.rfind(']') > raw.rfind('}')) else raw.rfind('}')
+        
+        if start == -1 or end == -1 or end <= start:
+            return False
+
+        json_str = raw[start : end + 1]
         try:
-            payload = json.loads(result.stdout)
+            payload = json.loads(json_str)
         except json.JSONDecodeError:
             return False
 
@@ -191,7 +207,31 @@ class TerminalUI:
             return self._render_single_object_payload(payload, result.host, "Operating System")
         if result.validation_type == "powershell_version_json":
             return self._render_single_object_payload(payload, result.host, "PowerShell Version")
+        if result.validation_type == "grep_json":
+            return self._render_grep_payload(payload, result.host)
         return False
+
+    def _render_grep_payload(self, payload: object, host: str) -> bool:
+        items = payload if isinstance(payload, list) else [payload]
+        rows = [item for item in items if isinstance(item, dict)]
+        if not rows:
+            return False
+
+        table = Table(title=f"Search Results ({host})", expand=True, border_style="cyan")
+        table.add_column("File", style="blue")
+        table.add_column("Line", justify="right", style="magenta")
+        table.add_column("Content", style="green")
+
+        for row in rows:
+            file_path = str(row.get("File") or "")
+            table.add_row(
+                self._make_link(file_path, file_path), # Make it a link
+                str(row.get("LineNumber") or ""),
+                str(row.get("Content") or ""),
+            )
+
+        self.console.print(table)
+        return True
 
     def _render_event_log_payload(self, payload: object, host: str) -> bool:
         items = payload if isinstance(payload, list) else [payload]

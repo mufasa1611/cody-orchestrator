@@ -30,10 +30,9 @@ def _run_command(command: list[str], timeout: int) -> CommandResult:
         for line in iter(process.stdout.readline, ""):
             trimmed = line.strip()
             if trimmed:
-                # Use a special prefix that the UI can detect or just print it
-                # For now, we print it with a 'LIVE' tag
-                print(f"    [blue]STREAM:[/blue] {trimmed}")
-            stdout_lines.append(line)
+                # We stop printing the raw tag here and let the UI handle final display
+                # but we keep the collection for the result
+                stdout_lines.append(line)
         
         # Collect remaining output (stderr)
         _, stderr = process.communicate(timeout=timeout)

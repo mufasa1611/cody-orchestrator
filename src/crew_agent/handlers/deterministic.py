@@ -26,6 +26,9 @@ def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     if _looks_like_cleanup_request(lowered):
         return _windows_cleanup_plan(windows_hosts)
 
+    if _looks_like_content_search_request(lowered):
+        return _windows_content_search_plan(request, windows_hosts)
+
     if _looks_like_search_request(lowered):
         return _windows_search_plan(request, windows_hosts)
 
@@ -326,14 +329,19 @@ def _windows_cleanup_plan(hosts: list[Host]) -> ExecutionPlan:
 
 def _looks_like_search_request(lowered: str) -> bool:
     search_terms = ("search", "find", "look for", "locate", "where is")
-    file_terms = ("file", ".txt", ".log", ".json", ".py", "test.txt")
-    return any(term in lowered for term in search_terms) and any(term in lowered for term in file_terms)
+    # Add common drive and file markers
+    target_terms = ("file", ".txt", ".log", ".json", ".py", "test-brother.txt", "c:", "d:", "drive")
+    return any(term in lowered for term in search_terms) and any(term in lowered for term in target_terms)
 
 
 def _windows_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan:
-    # Smarter extraction: Look for "for [filename]" or just the word after "search"
-    match = re.search(r"search (?:my )?(?:.* for )?([A-Za-z0-9._-]+)", request, re.IGNORECASE)
-    filename = match.group(1) if match else "test.txt"
+    # Smarter extraction: Handle "search my c: for [file]" and "search [file]"
+    # Added [^ ]+ to catch everything until the next space or end of string
+    match = re.search(r"for ([A-Za-z0-9._-]+)", request, re.IGNORECASE)
+    if not match:
+        match = re.search(r"search (?:my )?(?:[a-z]: )?([A-Za-z0-9._-]+)", request, re.IGNORECASE)
+    
+    filename = match.group(1) if match else "test-brother.txt"
     
     # Use -ErrorAction SilentlyContinue but also wrap in a check to ensure exit 0 if results found
     command = (
@@ -367,6 +375,58 @@ def _windows_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan:
         target_hosts=[host.name for host in hosts],
         steps=steps,
         raw={"builtin": True, "handler": "search", "specialist": "infra-inspector"},
+    )
+
+
+def _looks_like_content_search_request(lowered: str) -> bool:
+    grep_terms = ("content", "inside", "contains", "grep", "text for")
+    search_terms = ("search", "find", "look for")
+    return any(term in lowered for term in grep_terms) or (any(term in lowered for term in search_terms) and "text" in lowered)
+
+
+def _windows_content_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan:
+    # Extract the pattern (text) after "for"
+    match = re.search(r"for ['\"]?([^'\"]+)['\"]?", request, re.IGNORECASE)
+    pattern = match.group(1) if match else "sandra_home"
+    
+    # Improved command: 
+    # 1. Pure STDOUT (removed Write-Host)
+    # 2. Exclude .cody, .git, and .gemini to avoid self-referencing history
+    # 3. Prettify output
+    command = (
+        f"$pattern = '{pattern}'; "
+        "Get-ChildItem -Path C:\\ -Include *.txt,*.log,*.md,*.json,*.py,*.env,*.yaml,*.yml -Recurse -ErrorAction SilentlyContinue | "
+        "Where-Object { $_.FullName -notmatch '\\.(cody|git|gemini|venv)' } | "
+        "Select-String -Pattern $pattern | "
+        "Select-Object @{Name='File';Expression={$_.Path}}, LineNumber, @{Name='Content';Expression={$_.Line.Trim()}} | "
+        "ConvertTo-Json"
+    )
+    steps = [
+        PlanStep(
+            id=f"builtin-grep-{index}",
+            title=f"Grep for '{pattern}'",
+            host=host.name,
+            kind="inspect",
+            rationale="Handled by Cody's built-in content search (grep) handler.",
+            command=command,
+            expected_signal="JSON array of matching lines and file paths",
+            validation_type="grep_json",
+            accept_nonzero_returncode=True
+        )
+        for index, host in enumerate(hosts, start=1)
+    ]
+    return ExecutionPlan(
+        summary=f"Search inside file content for '{pattern}' on Windows hosts.",
+        planner_notes=["matched built-in deterministic content search handler"],
+        risk="low",
+        domain="infra",
+        operation_class="inspect",
+        requires_confirmation=False,
+        requires_unsafe=False,
+        missing_information=[],
+        target_hosts=[host.name for host in hosts],
+        steps=steps,
+        raw={"builtin": True, "handler": "grep", "specialist": "infra-inspector"},
     )
 
 
