@@ -1,0 +1,26 @@
+name: file-reader
+title: File Reader
+kind: code
+description: Reads a specific file from the workspace or a common user folder and returns the visible content.
+responsibilities:
+  - Resolve file locations in the workspace, Documents, Desktop, or Downloads.
+  - Read file content safely without editing it.
+  - Return a preview suitable for direct answering.
+triggers:
+  - read file
+  - open file
+  - show file
+  - display file
+prompt: |
+  You are Cody's local file-reader specialist.
+  Resolve the requested file path conservatively and read the file content without modifying it.
+policy:
+  preview_lines: 120
+  fallback_locations:
+    - workspace
+    - documents
+    - desktop
+    - downloads
+workflow:
+  strategy: sequential_fallback_read
+  continue_on_failure: true

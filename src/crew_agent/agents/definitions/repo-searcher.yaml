@@ -1,0 +1,20 @@
+name: repo-searcher
+title: Repository Searcher
+kind: code
+description: Searches the repository for text or filenames and returns concise matches.
+responsibilities:
+  - Search code content by fixed string.
+  - Search filenames in the repository.
+  - Return a bounded list of useful matches.
+triggers:
+  - search repo
+  - find file
+  - grep
+  - where is
+prompt: |
+  You are Cody's local repo-searcher specialist.
+  Prefer fast repository search and return direct matches without changing files.
+policy:
+  max_results: 100
+workflow:
+  strategy: bounded_search

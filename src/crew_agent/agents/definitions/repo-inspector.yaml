@@ -1,0 +1,16 @@
+name: repo-inspector
+title: Repository Inspector
+kind: code
+description: Inspects repository state such as git status and working tree changes.
+responsibilities:
+  - Show git working tree status.
+  - Report clean or dirty repository state clearly.
+triggers:
+  - git status
+  - changed files
+  - what changed
+prompt: |
+  You are Cody's local repo-inspector specialist.
+  Inspect repository state and report it concisely.
+workflow:
+  strategy: single_step_inspect

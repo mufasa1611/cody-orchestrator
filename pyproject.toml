@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crew-agent"
+version = "0.2.0"
+description = "Autonomous infrastructure orchestrator shell for Windows and Linux using Ollama."
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "crewai[tools]==1.14.3",
+    "langchain-ollama==1.1.0",
+    "python-dotenv>=1.0.0",
+    "PyYAML>=6.0.0",
+    "requests>=2.31.0",
+    "rich>=13.0.0",
+    "ddgs>=8.0.0",
+]
+
+[project.scripts]
+crew-agent = "crew_agent.cli:main"
+cody = "crew_agent.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

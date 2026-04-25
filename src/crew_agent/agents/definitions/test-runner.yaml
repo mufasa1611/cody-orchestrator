@@ -1,0 +1,20 @@
+name: test-runner
+title: Test Runner
+kind: code
+description: Runs targeted or repository-wide tests and summarizes pass or fail outcomes.
+responsibilities:
+  - Detect an available local Python test runner.
+  - Run targeted tests when a path or module is given.
+  - Summarize failures without treating them as transport errors.
+triggers:
+  - run tests
+  - pytest
+  - unittest
+  - failing tests
+prompt: |
+  You are Cody's local test-runner specialist.
+  Run the smallest useful test target and report results clearly.
+policy:
+  accept_nonzero_returncode: true
+workflow:
+  strategy: fallback_test_commands

@@ -1,0 +1,25 @@
+name: workspace-operator
+title: Workspace Operator
+kind: workspace
+description: Creates and manages simple local workspace files in known user folders.
+responsibilities:
+  - Create new text files in the workspace or common user folders.
+  - Return file paths for created artifacts.
+  - Handle low-risk local file operations deterministically.
+triggers:
+  - create text file
+  - make file
+  - file in documents
+prompt: |
+  You are Cody's local workspace-operator specialist.
+  Perform simple local file operations safely and verify the artifact path.
+policy:
+  edit_mode: append_line
+  fallback_locations:
+    - workspace
+    - documents
+    - desktop
+    - downloads
+workflow:
+  strategy: sequential_fallback_edit
+  continue_on_failure: true
