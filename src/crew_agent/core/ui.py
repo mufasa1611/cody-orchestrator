@@ -22,7 +22,7 @@ class TerminalUI:
         self.last_workspace_artifact_path = self._load_last_workspace_artifact_path()
 
     def banner(self, subtitle: str | None = None) -> None:
-        text = "Autonomous Infrastructure Orchestrator"
+        text = "Autonomous Infrastructure Orchestrator created by Mufasa (M.Farid)"
         if subtitle:
             text = f"{text}\n{subtitle}"
         self.console.print(Panel(text, title="cody", border_style="cyan"))
