@@ -64,6 +64,30 @@ class InspectionPolicyTests(unittest.TestCase):
         )
         guard_command(self.host, command, permission_mode="safe")
 
+    def test_github_cli_presence_request_uses_deterministic_plan(self) -> None:
+        plan = build_builtin_plan(
+            "is github cli installed in my windows system",
+            [self.host],
+        )
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(plan.operation_class, "inspect")
+        self.assertEqual(plan.steps[0].validation_type, "tool_presence_json")
+        self.assertIn("Get-Command gh", plan.steps[0].command)
+
+    def test_tool_presence_validation_accepts_installed_false_json(self) -> None:
+        plan = build_builtin_plan(
+            "is github cli installed in my windows system",
+            [self.host],
+        )
+        assert plan is not None
+        step = plan.steps[0]
+        error = validate_step_stdout(
+            step,
+            '{"Installed":false,"Name":"GitHub CLI","Command":"gh","Source":"","Version":"","Hint":"Not found."}',
+        )
+        self.assertIsNone(error)
+
 
 if __name__ == "__main__":
     unittest.main()

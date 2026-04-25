@@ -164,6 +164,18 @@ class RoutingTests(unittest.TestCase):
         )
         self.assertIsNone(validated)
 
+    def test_help_route_falls_back_for_install_check_request(self) -> None:
+        decision = RouteDecision(
+            kind="help",
+            message="Please specify which system you are referring to.",
+            confidence="high",
+        )
+        validated = validate_route_decision(
+            decision,
+            "is github cli is installed in the system",
+        )
+        self.assertIsNone(validated)
+
     def test_workspace_plan_matches_memo_write(self) -> None:
         host = Host(name="local-win", platform="windows", transport="local", enabled=True)
         plan = build_workspace_plan(

@@ -11,6 +11,9 @@ def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     if not windows_hosts or len(windows_hosts) != len(hosts):
         return None
 
+    if _looks_like_github_cli_presence_request(lowered):
+        return _windows_github_cli_presence_plan(windows_hosts)
+
     if ("powershell" in lowered or "pwsh" in lowered) and "version" in lowered:
         return _windows_powershell_version_plan(windows_hosts)
 
@@ -94,10 +97,50 @@ def _extract_service_name(request: str) -> str | None:
     return None
 
 
+def _looks_like_github_cli_presence_request(lowered: str) -> bool:
+    github_terms = ("github cli", "gh cli", "gh.exe", "gh ", " github ")
+    install_terms = ("installed", "available", "present", "exist", "exists", "in path")
+    return any(term in lowered for term in github_terms) and any(term in lowered for term in install_terms)
+
+
 def _windows_powershell_version_plan(hosts: list[Host]) -> ExecutionPlan:
     command = (
         "$PSVersionTable.PSVersion | "
         "Select-Object Major,Minor,Build,Revision | ConvertTo-Json -Compress"
+    )
+
+
+def _windows_github_cli_presence_plan(hosts: list[Host]) -> ExecutionPlan:
+    command = (
+        "$command = Get-Command gh -ErrorAction SilentlyContinue; "
+        "$candidates = @("
+        "  'C:\\Program Files\\GitHub CLI\\gh.exe', "
+        "  (Join-Path $env:LOCALAPPDATA 'Programs\\GitHub CLI\\gh.exe')"
+        "); "
+        "$pathMatch = $null; "
+        "foreach ($candidate in $candidates) { "
+        "  if (Test-Path -LiteralPath $candidate) { $pathMatch = $candidate; break } "
+        "} "
+        "if ($command) { "
+        "  $source = $command.Source; "
+        "  $version = (& $source --version 2>$null | Select-Object -First 1); "
+        "  [pscustomobject]@{Installed=$true; Name='GitHub CLI'; Command='gh'; Source=$source; Version=$version} | ConvertTo-Json -Compress; "
+        "  exit 0 "
+        "} "
+        "if ($pathMatch) { "
+        "  $version = (& $pathMatch --version 2>$null | Select-Object -First 1); "
+        "  [pscustomobject]@{Installed=$true; Name='GitHub CLI'; Command='gh'; Source=$pathMatch; Version=$version} | ConvertTo-Json -Compress; "
+        "  exit 0 "
+        "} "
+        "[pscustomobject]@{Installed=$false; Name='GitHub CLI'; Command='gh'; Source=''; Version=''; Hint='Not found in PATH or common Windows install locations.'} | ConvertTo-Json -Compress"
+    )
+    return _single_inspect_plan(
+        hosts,
+        summary="Inspect whether GitHub CLI is installed on the selected Windows hosts.",
+        title="Check GitHub CLI installation",
+        command=command,
+        expected_signal="JSON object showing whether GitHub CLI is installed and where it was found",
+        validation_type="tool_presence_json",
     )
     return _single_inspect_plan(
         hosts,

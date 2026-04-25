@@ -36,6 +36,7 @@ def _validate_typed_output(validation_type: str, stdout: str) -> str | None:
         "repo_file_list_text",
         "git_status_text",
         "test_run_text",
+        "tool_presence_json",
         "powershell_version_json",
         "os_version_json",
         "disk_space_json",
@@ -93,6 +94,19 @@ def _validate_typed_output(validation_type: str, stdout: str) -> str | None:
         "git_status_text",
         "test_run_text",
     }:
+        return None
+
+    if validation_type == "tool_presence_json":
+        try:
+            payload = json.loads(stdout)
+        except json.JSONDecodeError as exc:
+            return f"tool presence check did not return valid JSON: {exc.msg}"
+        if not isinstance(payload, dict):
+            return "expected a JSON object for tool presence"
+        required = ("Installed", "Name", "Command", "Source", "Version")
+        missing = [name for name in required if name not in payload]
+        if missing:
+            return f"missing tool presence fields: {', '.join(missing)}"
         return None
 
     try:

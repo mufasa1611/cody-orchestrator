@@ -156,7 +156,8 @@ def run_request(
     approval_required = bool(approval_reasons)
     approval_granted = approved
 
-    if plan.missing_information and not plan.steps:
+    if plan.missing_information:
+        ui.phase("warn", "planner reported missing information; execution will not continue until the request is clarified")
         return 2
     if not plan.steps:
         ui.phase("warn", "planner returned no executable steps")

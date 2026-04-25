@@ -50,6 +50,29 @@ def _build_result_summary(
                 ],
             )
 
+    if validation_type == "tool_presence_json":
+        payload = _load_json(stdout)
+        if isinstance(payload, dict):
+            installed = bool(payload.get("Installed"))
+            lines = [
+                f"Tool: {payload.get('Name', '-')}",
+                f"Installed: {'yes' if installed else 'no'}",
+            ]
+            source = str(payload.get("Source") or "").strip()
+            version = str(payload.get("Version") or "").strip()
+            hint = str(payload.get("Hint") or "").strip()
+            if source:
+                lines.append(f"Source: {source}")
+            if version:
+                lines.append(f"Version: {version}")
+            if hint:
+                lines.append(hint)
+            return AnswerSummary(
+                title="Answer",
+                lines=lines,
+                tone="green" if installed else "yellow",
+            )
+
     if validation_type == "workspace_file_contains_json":
         payload = _load_json(stdout)
         if isinstance(payload, dict):

@@ -191,6 +191,35 @@ class CodeExecutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertEqual(execute_step_mock.call_count, 2)
 
+    def test_orchestrator_does_not_execute_when_plan_has_missing_information(self) -> None:
+        ui = TerminalUI()
+        with patch(
+            "crew_agent.handlers.orchestrator.plan_request"
+        ) as plan_request_mock, patch(
+            "crew_agent.handlers.orchestrator.execute_plan_step"
+        ) as execute_step_mock:
+            plan = ExecutionPlan(
+                summary="Ambiguous request",
+                risk="low",
+                domain="infra",
+                operation_class="inspect",
+                missing_information=["Please clarify what tool you mean."],
+                steps=[
+                    PlanStep(
+                        id="1",
+                        title="Check something",
+                        host=self.host.name,
+                        kind="inspect",
+                        command="Get-Command gh",
+                    )
+                ],
+                raw={"specialist": "infra-planner"},
+            )
+            plan_request_mock.return_value = (plan, [self.host])
+            exit_code = run_request("is github installed", ui)
+            self.assertEqual(exit_code, 2)
+            execute_step_mock.assert_not_called()
+
 
 class CodeAnsweringTests(unittest.TestCase):
     def test_test_summary_reports_failures(self) -> None:

@@ -60,6 +60,10 @@ ACTION_HINTS = (
     "stop",
     "status",
     "version",
+    "installed",
+    "available",
+    "present",
+    "exists",
     "install",
     "remove",
     "disk",
@@ -83,6 +87,8 @@ ACTION_HINTS = (
     "windows",
     "linux",
     "powershell",
+    "cli",
+    "command",
     "network",
     "log",
     "shutdown",
@@ -336,12 +342,14 @@ def _fallback_route(request: str) -> RouteDecision:
 
 def _looks_operational(text: str) -> bool:
     lowered = " ".join(text.casefold().split())
-    return _infer_action(lowered) in TASK_ACTIONS and any(hint in lowered for hint in ACTION_HINTS)
+    return _infer_action(lowered) in TASK_ACTIONS and (
+        any(hint in lowered for hint in ACTION_HINTS) or _looks_install_check_request(lowered)
+    )
 
 
 def _looks_task_like_request(text: str) -> bool:
     lowered = " ".join(text.casefold().split())
-    return _looks_operational(lowered) or _looks_like_workspace_write(lowered)
+    return _looks_operational(lowered) or _looks_like_workspace_write(lowered) or _looks_install_check_request(lowered)
 
 
 def _looks_like_workspace_write(lowered: str) -> bool:
@@ -353,6 +361,8 @@ def _looks_like_workspace_write(lowered: str) -> bool:
 def _infer_action(text: str) -> str:
     lowered = " ".join(text.casefold().split())
     if any(word in lowered for word in ("check", "show", "list", "get", "read", "open", "search", "find", "grep", "inspect", "status", "version", "how much", "how many", "run tests", "run the tests", "pytest", "unittest")):
+        return "inspect"
+    if _looks_install_check_request(lowered):
         return "inspect"
     if _looks_like_shutdown_reason_query(lowered):
         return "inspect"
@@ -388,3 +398,14 @@ def _looks_like_shutdown_reason_query(lowered: str) -> bool:
     shutdown_terms = ("shutdown", "shut down", "show down", "shout down", "power off", "restart", "reboot")
     reason_terms = ("reason", "why", "last time", "previous", "last")
     return any(term in lowered for term in shutdown_terms) and any(term in lowered for term in reason_terms)
+
+
+def _looks_install_check_request(lowered: str) -> bool:
+    install_terms = ("installed", "available", "present", "exist", "exists", "in path")
+    target_terms = ("cli", "command", "tool", "github", "git", "gh", "python", "powershell", "windows")
+    question_terms = ("is ", "does ", "can ", "check", "show", "tell me")
+    return (
+        any(term in lowered for term in install_terms)
+        and any(term in lowered for term in target_terms)
+        and any(term in lowered for term in question_terms)
+    )

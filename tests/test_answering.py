@@ -68,6 +68,26 @@ class AnsweringTests(unittest.TestCase):
         self.assertEqual(len(summaries), 1)
         self.assertTrue(any("Inserted text:" in line for line in summaries[0].lines))
 
+    def test_tool_presence_summary_reports_installed_status(self) -> None:
+        plan = ExecutionPlan(summary="Check tool", operation_class="inspect")
+        result = StepExecutionResult(
+            step_id="1",
+            host="local-win",
+            title="Check GitHub CLI installation",
+            command="cmd",
+            success=True,
+            returncode=0,
+            stdout='{"Installed":true,"Name":"GitHub CLI","Command":"gh","Source":"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe","Version":"gh version 2.91.0"}',
+            stderr="",
+            verify=None,
+            duration_seconds=0.2,
+            validation_type="tool_presence_json",
+        )
+        summaries = build_answer_summaries(plan, [result])
+        self.assertEqual(len(summaries), 1)
+        self.assertTrue(any("Installed: yes" in line for line in summaries[0].lines))
+        self.assertTrue(any("Source:" in line for line in summaries[0].lines))
+
 
 if __name__ == "__main__":
     unittest.main()
