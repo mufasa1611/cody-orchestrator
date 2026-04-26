@@ -26,3 +26,6 @@
 
 # 2026-04-26 14:12:52.092891
 +how many text file in the docunments folder
+
+# 2026-04-26 14:59:13.293704
++ how many folders in the videos folder
