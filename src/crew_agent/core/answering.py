@@ -221,10 +221,36 @@ def _build_result_summary(
             return AnswerSummary(title="Answer", lines=lines)
         return AnswerSummary(title="Answer", lines=["No content matches found."])
 
+    if validation_type == "file_count_json":
+        payload = _load_json(stdout)
+        if isinstance(payload, dict):
+            count = payload.get("Count", 0)
+            f_type = payload.get("Type", "items")
+            folder = payload.get("Folder", "target")
+            return AnswerSummary(
+                title="Answer",
+                lines=[f"Found {count} {f_type} in {folder}."]
+            )
+
     if result.artifact_path:
         return AnswerSummary(title="Answer", lines=[result.artifact_path])
 
     if plan.operation_class == "inspect" and combined_output:
+        # PRO AUTO-JSON: Detect if the model output a JSON array of items
+        payload = _load_json(combined_output)
+        if isinstance(payload, list) and len(payload) > 0:
+            count = len(payload)
+            lines = [f"Found {count} items in JSON result:"]
+            for item in payload[:5]:
+                if isinstance(item, dict):
+                    name = item.get('Name') or item.get('FullName') or item.get('File') or str(list(item.values())[0])
+                    lines.append(f"- {name}")
+                else:
+                    lines.append(f"- {str(item)}")
+            if count > 5:
+                lines.append(f"... and {count - 5} more items.")
+            return AnswerSummary(title="Answer Summary", lines=lines)
+
         lines = [line for line in combined_output.splitlines() if line.strip() and not line.startswith("----") and line.strip().lower() not in ("name", "fullname", "count")]
         if len(lines) > 1:
             return AnswerSummary(

@@ -97,7 +97,14 @@ def _windows_universal_file_plan(request: str, hosts: list[Host]) -> ExecutionPl
     path_match = re.search(r"(?:in|of) (?:the )?([A-Za-z0-9._/\\-]+)", lowered)
     folder_name = path_match.group(1) if path_match else "documents"
     
-    resolved_path = _resolve_folder_path_locally(folder_name)
+    # 2. Resolve Path
+    resolved_path = None
+    # If it looks like an absolute path already, use it!
+    if re.match(r"^[a-z]:\\", folder_name, re.IGNORECASE):
+        resolved_path = folder_name
+    else:
+        resolved_path = _resolve_folder_path_locally(folder_name)
+    
     if not resolved_path: return None
 
     is_count = any(t in lowered for t in ("how many", "count", "total"))
@@ -116,11 +123,17 @@ def _windows_universal_file_plan(request: str, hosts: list[Host]) -> ExecutionPl
     ext_filter = "*"
     if "pdf" in lowered: ext_filter = "*.pdf"
     elif "text" in lowered or "txt" in lowered: ext_filter = "*.txt"
-    
     if is_count:
-        cmd = f"@(Get-ChildItem -Path '{resolved_path}' -Filter '{ext_filter}' -ErrorAction SilentlyContinue | {mode_filter}).Count"
+        # PRO UPGRADE: Get the items, count them, but also keep the paths for the UI
+        cmd = (
+            f"$items = @(Get-ChildItem -Path '{resolved_path}' -Filter '{ext_filter}' -ErrorAction SilentlyContinue | {mode_filter}); "
+            f"$paths = $items | Select-Object -ExpandProperty FullName; "
+            f"[pscustomobject]@{{Folder='{resolved_path}'; Type='{resource_type}'; Filter='{ext_filter}'; Count=$items.Count; Items=$paths}} | ConvertTo-Json -Compress"
+        )
+        val_type = "file_count_json"
         title = f"Count {resource_type} ({ext_filter}) in {folder_name}"
     else:
+
         cmd = f"Get-ChildItem -Path '{resolved_path}' -Filter '{ext_filter}' -ErrorAction SilentlyContinue | {mode_filter} | Select-Object -ExpandProperty Name"
         title = f"List {resource_type} in {folder_name}"
 

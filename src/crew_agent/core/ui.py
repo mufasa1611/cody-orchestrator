@@ -222,6 +222,7 @@ class TerminalUI:
         folder = payload.get("Folder", "Unknown")
         filter_str = payload.get("Filter", "*")
         count = payload.get("Count", 0)
+        items = payload.get("Items", [])
         
         self.console.print(Panel(
             f"Folder: [cyan]{folder}[/cyan]\nFilter: [yellow]{filter_str}[/yellow]\nTotal Count: [bold green]{count}[/bold green]",
@@ -229,6 +230,16 @@ class TerminalUI:
             border_style="green",
             expand=False
         ))
+
+        if isinstance(items, list) and items:
+            table = Table(title="Items Found", border_style="cyan", expand=True)
+            table.add_column("Path", style="blue")
+            for item in items[:100]: # Show up to 100 links
+                table.add_row(self._make_link(item, item))
+            if len(items) > 100:
+                table.add_row(f"[dim]... and {len(items) - 100} more items.[/dim]")
+            self.console.print(table)
+            
         return True
 
     def _render_grep_payload(self, payload: object, host: str) -> bool:
