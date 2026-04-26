@@ -115,16 +115,24 @@ def main(argv: list[str] | None = None) -> int:
     _check_for_updates(ui)
     
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv: 
+    
+    # 1. Handle no-args or explicit 'shell' command
+    if not argv or (len(argv) == 1 and argv[0] == "shell"):
         return _interactive_shell(ui)
     
+    # 2. Handle built-in flags
     if "--version" in argv:
         from crew_agent import __version__
         print(f"Codin v{__version__}")
         return 0
 
-    # One-shot execution
-    return orchestrator_run_request(request=" ".join(argv), ui=ui, is_interactive=False)
+    # 3. Handle 'run' command (stripping the 'run' prefix if present)
+    request_text = " ".join(argv)
+    if argv[0] == "run":
+        request_text = " ".join(argv[1:])
+
+    # 4. Execute orchestration
+    return orchestrator_run_request(request=request_text, ui=ui, is_interactive=False)
 
 if __name__ == "__main__":
     sys.exit(main())
