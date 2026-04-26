@@ -92,12 +92,23 @@ def _handle_model_cmd(ui: TerminalUI) -> None:
             return
         
         choice = ui.select_option("Select AI Model", names, current=config.model)
-        if choice:
+        if choice and choice != config.model:
+            # PRO LOGIC: Unload OLD model first
+            ui.phase("thinking", f"Unloading {config.model} from VRAM...")
+            client.unload_model()
+            
+            # Update config
             config.model = choice
             save_config(config)
-            ui.phase("done", f"Model updated to: {choice}")
+            
+            # PRO LOGIC: Warm up NEW model on GPU
+            ui.phase("thinking", f"Loading {choice} onto GPU...")
+            new_client = OllamaClient(model=choice, base_url=config.base_url)
+            new_client.warm_up()
+            
+            ui.phase("done", f"Model switched to: {choice} (Ready on GPU)")
     except Exception as e:
-        ui.phase("warn", f"Could not list models: {e}")
+        ui.phase("warn", f"Could not list/switch models: {e}")
 
 def _check_for_updates(ui: TerminalUI) -> None:
     try:

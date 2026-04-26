@@ -1,0 +1,5 @@
+{
+  "model": "gemma4:latest",
+  "permission_mode": "full",
+  "base_url": "http://localhost:11434"
+}

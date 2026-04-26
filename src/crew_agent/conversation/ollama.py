@@ -44,6 +44,28 @@ class OllamaClient:
             if str(item.get("name", "")).strip()
         ]
 
+    def unload_model(self) -> None:
+        """Explicitly unloads the model from VRAM/RAM."""
+        try:
+            requests.post(
+                f"{self.base_url}/api/generate",
+                json={"model": self.model, "keep_alive": 0},
+                timeout=5,
+            )
+        except:
+            pass
+
+    def warm_up(self) -> None:
+        """Pings the model to force it into the GPU."""
+        try:
+            requests.post(
+                f"{self.base_url}/api/generate",
+                json={"model": self.model, "prompt": "hi", "stream": False},
+                timeout=30,
+            )
+        except:
+            pass
+
     def generate_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         prompt = (
             f"{system_prompt.strip()}\n\n"
