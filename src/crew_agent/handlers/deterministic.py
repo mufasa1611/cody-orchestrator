@@ -10,12 +10,13 @@ def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     Entry point for fast, non-LLM automation.
     Priority: Specific Maintenance -> Scoped Counting -> Grep -> Find
     """
+    raw_input = request.lower()
     lowered = " ".join(request.casefold().split())
     windows_hosts = [host for host in hosts if host.platform == "windows" and host.enabled]
     if not windows_hosts:
         return None
 
-    # 1. Identity & System (Instant)
+    # 1. Identity & System
     if _looks_like_github_cli_presence_request(lowered):
         return _windows_github_cli_presence_plan(windows_hosts)
     if ("powershell" in lowered or "pwsh" in lowered) and "version" in lowered:
@@ -31,15 +32,19 @@ def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     if _looks_like_shutdown_reason_request(lowered):
         return _windows_shutdown_reason_plan(windows_hosts)
 
-    # 3. Scoped Counting & Listing (High Precision)
-    if _looks_like_file_count_request(lowered) or _looks_like_folder_list_request(lowered):
-        return _windows_file_count_plan(request, windows_hosts)
+    # 3. Scoped Counting (Check ORIGINAL input for "how many")
+    if any(t in raw_input for t in ("how many", "count", "total", "number of", "sum")):
+        return _windows_file_count_plan(request, windows_hosts, do_count=True)
+    
+    # 4. Scoped Listing
+    if any(t in raw_input for t in ("list", "show", "contents", "what is in")):
+        return _windows_file_count_plan(request, windows_hosts, do_count=False)
 
-    # 4. Content Search (Grep)
+    # 5. Content Search (Grep)
     if _looks_like_content_search_request(lowered):
         return _windows_content_search_plan(request, windows_hosts)
 
-    # 5. Filename Search (Find)
+    # 6. Filename Search (Find)
     if _looks_like_search_request(lowered):
         return _windows_search_plan(request, windows_hosts)
 
@@ -47,16 +52,6 @@ def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
 
 
 # --- DETECTION LOGIC (STRICT) ---
-
-def _looks_like_file_count_request(lowered: str) -> bool:
-    count_terms = ("how many", "count", "total", "sum", "number of")
-    resource_terms = ("file", "folder", "directory", "dir", "document", "video", "music", "picture", "desktop", "download")
-    return any(t in lowered for t in count_terms) and any(t in lowered for t in resource_terms)
-
-def _looks_like_folder_list_request(lowered: str) -> bool:
-    list_terms = ("list", "show", "contents", "what is in")
-    resource_terms = ("folder", "directory", "dir")
-    return any(t in lowered for t in list_terms) and any(t in lowered for t in resource_terms)
 
 def _looks_like_content_search_request(lowered: str) -> bool:
     grep_terms = ("content", "inside", "contains", "grep", "text inside", "lines with")
@@ -75,10 +70,10 @@ def _looks_like_discovery_request(lowered: str) -> bool:
 
 # --- PLAN GENERATORS (THE "PRO" WAY) ---
 
-def _windows_file_count_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
+def _windows_file_count_plan(request: str, hosts: list[Host], do_count: bool) -> ExecutionPlan | None:
     lowered = request.lower()
     
-    # Identify mode
+    # Identify type
     is_folder_query = any(term in lowered for term in ("folder", "directory", "dir"))
     mode_filter = "Where-Object { $_.PSIsContainer }" if is_folder_query else "Where-Object { -not $_.PSIsContainer }"
     resource_type = "folders" if is_folder_query else "files"
@@ -114,24 +109,14 @@ def _windows_file_count_plan(request: str, hosts: list[Host]) -> ExecutionPlan |
                 f"& {{ $fn='{folder_name}'; $f=Get-ChildItem -Path $env:USERPROFILE -Filter $fn -ErrorAction SilentlyContinue | Where-Object {{ $_.PSIsContainer }} | Select-Object -First 1; "
                 "if(-not $f){ $drives=Get-PSDrive -PSProvider FileSystem; foreach($d in $drives){ "
                 "$f=Get-ChildItem -Path $d.Root -Filter $fn -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer } | Select-Object -First 1; "
-                "if($f){break}}}; if($f){$f.FullName}else{$null} }"
+                "if($f){break}}}; if($f){$f.FullName}else{$null} }}"
             )
             display_name = folder_name
 
     if not target_path_expr:
         return None
 
-    is_list_request = any(t in lowered for t in ("list", "show", "what is"))
-    
-    if is_list_request:
-        command = (
-            f"$base = ({target_path_expr}); "
-            "if (-not $base) { Write-Error 'Folder not found.'; exit 1 }; "
-            f"Get-ChildItem -Path $base -ErrorAction SilentlyContinue | {mode_filter} | Select-Object -ExpandProperty Name"
-        )
-        val_type = "text"
-        expected = "List of item names"
-    else:
+    if do_count:
         command = (
             f"$base = ({target_path_expr}); "
             "if (-not $base) { Write-Error 'Folder not found.'; exit 1 }; "
@@ -140,8 +125,18 @@ def _windows_file_count_plan(request: str, hosts: list[Host]) -> ExecutionPlan |
         )
         val_type = "file_count_json"
         expected = "JSON count object"
+        title = f"Count {resource_type} in {display_name}"
+    else:
+        command = (
+            f"$base = ({target_path_expr}); "
+            "if (-not $base) { Write-Error 'Folder not found.'; exit 1 }; "
+            f"Get-ChildItem -Path $base -ErrorAction SilentlyContinue | {mode_filter} | Select-Object -ExpandProperty Name"
+        )
+        val_type = "text"
+        expected = "List of names"
+        title = f"List {resource_type} in {display_name}"
 
-    return _single_inspect_plan(hosts, f"Process {resource_type} in {display_name}.", f"Process {resource_type} in {display_name}", command, expected, val_type)
+    return _single_inspect_plan(hosts, f"Process {resource_type} in {display_name}.", title, command, expected, val_type)
 
 
 def _windows_content_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
@@ -156,7 +151,7 @@ def _windows_content_search_plan(request: str, hosts: list[Host]) -> ExecutionPl
         "Select-Object @{Name='File';Expression={$_.Path}}, LineNumber, @{Name='Content';Expression={$_.Line.Trim()}} | "
         "ConvertTo-Json"
     )
-    return _single_inspect_plan(hosts, f"Grep for '{pattern}'.", f"Grep for '{pattern}'", command, "JSON", "grep_json")
+    return _single_inspect_plan(hosts, f"Search file content for '{pattern}'.", f"Grep for '{pattern}'", command, "JSON", "grep_json")
 
 
 def _windows_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
@@ -173,9 +168,9 @@ def _windows_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan | Non
 
 # --- UTILITIES ---
 
-def _single_inspect_plan(hosts, summary, title, command, expected_signal, validation_type):
+def _single_inspect_plan(hosts, summary, title, command, expected_signal, validation_type, specialist="infra-inspector"):
     steps = [PlanStep(id=f"builtin-{i}", title=title, host=host.name, kind="inspect", command=command, expected_signal=expected_signal, validation_type=validation_type, accept_nonzero_returncode=True) for i, host in enumerate(hosts, start=1)]
-    return ExecutionPlan(summary=summary, risk="low", domain="infra", operation_class="inspect", target_hosts=[host.name for host in hosts], steps=steps, raw={"builtin": True, "handler": validation_type, "specialist": "infra-inspector"})
+    return ExecutionPlan(summary=summary, risk="low", domain="infra", operation_class="inspect", target_hosts=[host.name for host in hosts], steps=steps, raw={"builtin": True, "handler": validation_type, "specialist": specialist})
 
 def _extract_service_name(request: str) -> str | None:
     patterns = (r"service\s+([A-Za-z0-9._-]+)", r"status of\s+([A-Za-z0-9._-]+)")
@@ -185,8 +180,8 @@ def _extract_service_name(request: str) -> str | None:
     return None
 
 def _looks_like_github_cli_presence_request(l: str) -> bool: return "github cli" in l and "installed" in l
-def _looks_like_os_version_request(l: str) -> bool: return "os version" in l or "windows version" in l
-def _looks_like_shutdown_reason_request(l: str) -> bool: return any(t in l for t in ("shutdown", "reboot", "restart")) and any(t in l for t in ("why", "reason", "last"))
+def _looks_like_os_version_request(l: str) -> bool: return "os version" in l
+def _looks_like_shutdown_reason_request(l: str) -> bool: return "shutdown" in l and "reason" in l
 
 def _windows_powershell_version_plan(hosts): return _single_inspect_plan(hosts, "PS Version", "Get PS Version", "$PSVersionTable.PSVersion | ConvertTo-Json", "JSON", "powershell_version_json")
 def _windows_os_version_plan(hosts): return _single_inspect_plan(hosts, "OS Version", "Get OS Version", "Get-CimInstance Win32_OperatingSystem | ConvertTo-Json", "JSON", "os_version_json")
