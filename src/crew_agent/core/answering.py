@@ -232,7 +232,19 @@ def _build_result_summary(
                 lines=[f"Found {count} {f_type} in {folder}."]
             )
 
+    if validation_type == "file_count_json":
+        payload = _load_json(stdout)
+        if isinstance(payload, dict):
+            count = payload.get("Count", 0)
+            f_type = payload.get("Type", "items")
+            folder = payload.get("Folder", "target")
+            return AnswerSummary(
+                title="Answer",
+                lines=[f"Found {count} {f_type} in {folder}."]
+            )
+
     if result.artifact_path:
+        return AnswerSummary(title="Answer", lines=[result.artifact_path])
         return AnswerSummary(title="Answer", lines=[result.artifact_path])
 
     if plan.operation_class == "inspect" and combined_output:

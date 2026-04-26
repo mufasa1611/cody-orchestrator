@@ -133,11 +133,11 @@ def _windows_universal_file_plan(request: str, hosts: list[Host]) -> ExecutionPl
         val_type = "file_count_json"
         title = f"Count {resource_type} ({ext_filter}) in {folder_name}"
     else:
-
         cmd = f"Get-ChildItem -Path '{resolved_path}' -Filter '{ext_filter}' -ErrorAction SilentlyContinue | {mode_filter} | Select-Object -ExpandProperty Name"
+        val_type = "text"
         title = f"List {resource_type} in {folder_name}"
 
-    return _single_inspect_plan(hosts, f"Action in {resolved_path}", title, cmd, "Result", "text")
+    return _single_inspect_plan(hosts, f"Action in {resolved_path}", title, cmd, "Result", val_type)
 
 
 def _windows_content_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
