@@ -60,7 +60,7 @@ def save_run_to_db(
     plan_summary: str,
     domain: str,
     risk: str,
-    exit_code: int,
+    exit_code: Any,
     results: list[Any]
 ) -> None:
     if sqlite3 is None:
@@ -71,10 +71,16 @@ def save_run_to_db(
     
     timestamp = datetime.now(timezone.utc).isoformat()
     
+    # PRO SAFETY: Ensure exit_code is a valid integer
+    try:
+        final_exit_code = int(exit_code)
+    except (ValueError, TypeError):
+        final_exit_code = 1
+    
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             "INSERT INTO runs (id, timestamp, request, summary, domain, risk, exit_code) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (run_id, timestamp, request, plan_summary, domain, risk, exit_code)
+            (run_id, timestamp, request, plan_summary, domain, risk, final_exit_code)
         )
         
         for r in results:

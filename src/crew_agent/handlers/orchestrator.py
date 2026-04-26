@@ -298,14 +298,10 @@ def run_request(
     ui.show_answer_summaries(build_answer_summaries(plan, results, ui))
     ui.show_run_summary(results, str(log_path))
     
-    # Calculate final exit code correctly
-    exit_code = 0
-    if results:
-        # Success if the VERY LAST result is successful (all steps or recovered steps)
+    # PRO FIX: Stable exit_code calculation
+    exit_code = 1
+    if results and len(results) > 0:
         exit_code = 0 if results[-1].success else 1
-    else:
-        # No results = failure
-        exit_code = 1
 
     # Save to SQLite DB for long-term memory
     try:

@@ -1,0 +1,69 @@
+def _windows_file_count_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
+    lowered = request.lower()
+    
+    # Identify mode
+    is_folder_query = any(term in lowered for term in ("folder", "directory", "dir"))
+    mode_filter = "Where-Object { $_.PSIsContainer }" if is_folder_query else "Where-Object { -not $_.PSIsContainer }"
+    resource_type = "folders" if is_folder_query else "files"
+
+    # Resolve Target Folder
+    target_path_expr = None
+    display_name = "Target"
+    
+    if "document" in lowered or "docunment" in lowered:
+        target_path_expr = "$([Environment]::GetFolderPath('MyDocuments'))"
+        display_name = "Documents"
+    elif "desktop" in lowered:
+        target_path_expr = "$([Environment]::GetFolderPath('Desktop'))"
+        display_name = "Desktop"
+    elif "downloads" in lowered:
+        target_path_expr = "$env:USERPROFILE\\Downloads"
+        display_name = "Downloads"
+    elif "video" in lowered:
+        target_path_expr = "$([Environment]::GetFolderPath('MyVideos'))"
+        display_name = "Videos"
+    elif "music" in lowered:
+        target_path_expr = "$([Environment]::GetFolderPath('MyMusic'))"
+        display_name = "Music"
+    elif "picture" in lowered:
+        target_path_expr = "$([Environment]::GetFolderPath('MyPictures'))"
+        display_name = "Pictures"
+    else:
+        # Resolve by name across all drives
+        path_match = re.search(r"(?:in|of) (?:the )?([A-Za-z0-9._-]+)", lowered)
+        if path_match:
+            folder_name = path_match.group(1)
+            # Find the actual path for this folder name on the target drive
+            target_path_expr = (
+                f"$f = & {{ $fn='{folder_name}'; $p=Get-ChildItem -Path $env:USERPROFILE -Filter $fn -ErrorAction SilentlyContinue | Where-Object {{ $_.PSIsContainer }} | Select-Object -First 1; "
+                "if(-not $p){ $drives=Get-PSDrive -PSProvider FileSystem; foreach($d in $drives){ "
+                "$p=Get-ChildItem -Path $d.Root -Filter $fn -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer } | Select-Object -First 1; "
+                "if($p){break}}}; if($p){$p.FullName}else{$null} }; $f"
+            )
+            display_name = folder_name
+
+    if not target_path_expr:
+        return None
+
+    # If it's a "list" request, we show names. If it's a "how many", we show count.
+    is_list_request = any(t in lowered for t in ("list", "show", "what is"))
+    
+    if is_list_request:
+        command = (
+            f"$base = ({target_path_expr}); "
+            "if (-not $base) { Write-Error 'Folder not found.'; exit 1 }; "
+            f"Get-ChildItem -Path $base -ErrorAction SilentlyContinue | {mode_filter} | Select-Object Name"
+        )
+        val_type = "text"
+        expected = "List of item names"
+    else:
+        command = (
+            f"$base = ({target_path_expr}); "
+            "if (-not $base) { Write-Error 'Folder not found.'; exit 1 }; "
+            f"$count = (Get-ChildItem -Path $base -ErrorAction SilentlyContinue | {mode_filter} | Measure-Object).Count; "
+            f"[pscustomobject]@{{Folder=$base; Type='{resource_type}'; Count=$count}} | ConvertTo-Json -Compress"
+        )
+        val_type = "file_count_json"
+        expected = "JSON count object"
+
+    return _single_inspect_plan(hosts, f"Process {resource_type} in {display_name}.", f"Process {resource_type} in {display_name}", command, expected, val_type)
