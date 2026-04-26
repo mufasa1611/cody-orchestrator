@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ===================================================
-echo Welcome to Codex Installer
+echo Welcome to Codin Installer
 echo ===================================================
 
 :: 1. Check prerequisites
@@ -19,12 +19,12 @@ if %errorlevel% neq 0 (
 )
 
 :: 2. Get install path
-set "DEFAULT_PATH=%USERPROFILE%\codex"
+set "DEFAULT_PATH=%USERPROFILE%\codin"
 set /p "INSTALL_PATH=Enter installation path [%DEFAULT_PATH%]: "
 if "%INSTALL_PATH%"=="" set "INSTALL_PATH=%DEFAULT_PATH%"
 
 echo.
-echo Installing Codex to %INSTALL_PATH%...
+echo Installing Codin to %INSTALL_PATH%...
 echo.
 
 :: 3. Clone repository
@@ -63,9 +63,9 @@ if !errorlevel! neq 0 (
 
 :: 6. Create global command alias
 echo.
-echo Setting up global 'codex' command...
+echo Setting up global 'codin' command...
 set "LAUNCHER_DIR=%USERPROFILE%"
-set "CMD_PATH=%LAUNCHER_DIR%\codex.cmd"
+set "CMD_PATH=%LAUNCHER_DIR%\codin.cmd"
 (
 echo @echo off
 echo setlocal
@@ -90,7 +90,7 @@ powershell -NoProfile -Command ^
 if errorlevel 1 (
     echo.
     echo [!] Global PATH check: "%LAUNCHER_DIR%" is not in your user PATH.
-    set /p "ADD_TO_PATH=Add it now so 'codex' works in any new terminal? [Y/n]: "
+    set /p "ADD_TO_PATH=Add it now so 'codin' works in any new terminal? [Y/n]: "
     if /I not "!ADD_TO_PATH!"=="n" (
         powershell -NoProfile -Command ^
           "$launcher = [IO.Path]::GetFullPath('%LAUNCHER_DIR%');" ^
@@ -104,7 +104,7 @@ if errorlevel 1 (
 
 echo ===================================================
 echo Installation Complete!
-echo You can now type 'codex' from anywhere.
-echo On your first run, Codex will help you set up Ollama.
+echo You can now type 'codin' from anywhere.
+echo On your first run, Codin will help you set up Ollama.
 echo ===================================================
 pause
