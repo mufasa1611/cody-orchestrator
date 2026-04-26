@@ -119,7 +119,12 @@ def _windows_file_count_plan(request: str, hosts: list[Host]) -> ExecutionPlan |
         path_match = re.search(r"in (?:the )?([A-Za-z0-9._-]+)", lowered)
         if path_match:
             folder_name = path_match.group(1)
-            target_path = f"(Get-ChildItem -Path C:\\ -Filter '{folder_name}' -Recurse -Directory -ErrorAction SilentlyContinue | Select-Object -First 1).FullName"
+            # PRO FIX: Search User Profile first (Fast), then fallback to C:\ (Slow)
+            target_path = (
+                f"$p = Get-ChildItem -Path $env:USERPROFILE -Filter '{folder_name}' -Recurse -Directory -ErrorAction SilentlyContinue | Select-Object -First 1; "
+                f"if (-not $p) {{ $p = Get-ChildItem -Path C:\\ -Filter '{folder_name}' -Recurse -Directory -MaxDepth 2 -ErrorAction SilentlyContinue | Select-Object -First 1 }}; "
+                "$p.FullName"
+            )
             display_name = folder_name
 
     if not target_path:
