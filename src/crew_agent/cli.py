@@ -109,7 +109,10 @@ def _interactive_shell(ui: TerminalUI) -> int:
     _show_shell_help(ui)
 
     thread = ConversationThread()
-    slash_commands = ["/help", "/status", "/exit", "/quit"]
+    slash_commands = [
+        "/help", "/doctor", "/inventory", "/status", "/model", "/permissions", 
+        "/approvals", "/agents", "/backup", "/runs", "/update", "/exit", "/quit"
+    ]
     completer = WordCompleter(slash_commands, ignore_case=True)
     history_file = paths.root / "history.txt"
     session = PromptSession(history=FileHistory(str(history_file)), completer=completer, complete_while_typing=True)

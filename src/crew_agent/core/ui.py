@@ -34,7 +34,7 @@ class TerminalUI:
         text = "Autonomous Infrastructure Orchestrator created by Mufasa (M.Farid)"
         if subtitle:
             text = f"{text}\n{subtitle}"
-        self.console.print(Panel(text, title="cody", border_style="cyan"))
+        self.console.print(Panel(text, title="codin", border_style="cyan"))
 
     def phase(self, kind: str, message: str) -> None:
         colors = {
