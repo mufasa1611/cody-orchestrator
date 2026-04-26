@@ -25,6 +25,12 @@ SPECIALISTS: tuple[TaskSpecialist, ...] = (
 )
 
 
+from crew_agent.core.memory import (
+    is_identity_question,
+    is_user_identity_question,
+    load_workspace_memory,
+)
+
 def resolve_execution_plan(
     request: str,
     hosts: list[Host],
@@ -32,8 +38,17 @@ def resolve_execution_plan(
     thread: ConversationThread | None = None,
 ) -> tuple[ExecutionPlan, str]:
     """
-    Decisive Routing: Specialists get raw request first.
+    Decisive Routing: Identity -> Specialists -> LLM.
     """
+    lowered = request.lower()
+    
+    # 0. Fast Identity Checks
+    if is_identity_question(lowered) or is_user_identity_question(lowered):
+        memory = load_workspace_memory()
+        msg = f"My name here is {memory.assistant_name}." if is_identity_question(lowered) else f"Your name here is {memory.user_name or 'unknown'}."
+        return ExecutionPlan(summary=msg, steps=[], target_hosts=[], raw={"chat": True}), "identity"
+
+    # 1. Try high-precision local specialists
     for specialist in SPECIALISTS:
         # We'll update the Specialist Callable signature in a follow-up if needed, 
         # but for now we pass it only if they accept it.
