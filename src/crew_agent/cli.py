@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from rich.panel import Panel
@@ -16,23 +17,9 @@ from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
 
 from crew_agent.conversation.ollama import OllamaClient, normalize_base_url
-from crew_agent.conversation.router import route_request
-from crew_agent.agents import get_agent_catalog
-from crew_agent.core.memory import (
-    DEFAULT_ASSISTANT_NAME,
-    extract_assistant_name_assignment,
-    extract_user_name_assignment,
-    is_identity_question,
-    is_memory_recall_question,
-    is_user_identity_question,
-    load_workspace_memory,
-    save_workspace_memory,
-    should_save_workspace_memory,
-    summarize_workspace_memory,
-)
 from crew_agent.core.paths import ensure_app_dirs
 from crew_agent.core.ui import TerminalUI
-from crew_agent.core.models import ConversationThread
+from crew_agent.core.models import ConversationThread, AppConfig
 from crew_agent.handlers.orchestrator import plan_request as orchestrator_plan_request
 from crew_agent.handlers.orchestrator import run_request as orchestrator_run_request
 from crew_agent.policy.config import (
@@ -43,70 +30,14 @@ from crew_agent.policy.config import (
 from crew_agent.providers.inventory import load_inventory
 
 
-KNOWN_COMMANDS = {
-    "approvals",
-    "agents",
-    "backup",
-    "doctor",
-    "inventory",
-    "model",
-    "permissions",
-    "runs",
-    "status",
-    "plan",
-    "run",
-    "shell",
-    "help",
-    "update",
-}
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="codin",
-        description="Autonomous Infrastructure Orchestrator shell.",
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("doctor")
-    subparsers.add_parser("inventory")
-    subparsers.add_parser("model")
-    subparsers.add_parser("permissions")
-    subparsers.add_parser("approvals")
-    subparsers.add_parser("agents")
-    subparsers.add_parser("backup")
-    subparsers.add_parser("runs")
-    subparsers.add_parser("status")
-    subparsers.add_parser("shell")
-    run = subparsers.add_parser("run")
-    run.add_argument("request")
-    run.add_argument("--host", action="append", default=[])
-    run.add_argument("--tag", action="append", default=[])
-    run.add_argument("--permissions")
-    run.add_argument("--approve", action="store_true")
-    run.add_argument("--dry-run", action="store_true")
-    plan = subparsers.add_parser("plan")
-    plan.add_argument("request")
-    plan.add_argument("--host", action="append", default=[])
-    plan.add_argument("--tag", action="append", default=[])
-    return parser
-
-
-def _plan(ui: TerminalUI, request: str, hosts: list[str], tags: list[str], thread: ConversationThread | None = None) -> int:
-    plan, selected_hosts = orchestrator_plan_request(request=request, hosts=load_inventory(), config=load_config())
-    ui.show_plan(plan, selected_hosts)
-    return 0
-
-def _run(ui: TerminalUI, request: str, hosts: list[str], tags: list[str], permissions: str | None, approved: bool, allow_prompt: bool, dry_run: bool, thread: ConversationThread | None = None) -> int:
-    return orchestrator_run_request(request=request, ui=ui, permissions=permissions, approve_all=approved, is_interactive=allow_prompt, dry_run=dry_run, host_names=hosts, tags=tags, thread=thread)
-
-def _show_shell_help(ui: TerminalUI) -> None:
-    ui.phase("thinking", "Enter any natural language task or a /command.")
-
 def _interactive_shell(ui: TerminalUI) -> int:
     bootstrap_local_files()
     paths = ensure_app_dirs()
-    ui.banner("interactive shell ready")
-    _show_shell_help(ui)
+    config = load_config()
+    inventory = load_inventory()
+    
+    ui.banner(f"interactive shell ready\nmodel={config.model} enabled_hosts={len([h for h in inventory if h.enabled])}")
+    ui.phase("thinking", "Enter any natural language task or a /command.")
 
     thread = ConversationThread()
     slash_commands = [
@@ -126,8 +57,41 @@ def _interactive_shell(ui: TerminalUI) -> int:
         if not request: continue
         if request.casefold() in {"exit", "quit", "/exit", "/quit"}: return 0
         
-        _run(ui, request, [], [], None, False, True, False, thread=thread)
+        if request.startswith("/"):
+            _handle_slash_command(request, ui, thread)
+        else:
+            orchestrator_run_request(request=request, ui=ui, is_interactive=True, thread=thread)
 
+def _handle_slash_command(request: str, ui: TerminalUI, thread: ConversationThread) -> None:
+    parts = shlex.split(request)
+    cmd = parts[0].casefold()
+    
+    if cmd == "/status":
+        from crew_agent.cli import _status
+        _status(ui)
+    elif cmd == "/model":
+        _handle_model_cmd(ui)
+    elif cmd == "/help":
+        ui.phase("thinking", "Available commands: " + ", ".join(["/status", "/model", "/doctor", "/inventory", "/exit"]))
+    else:
+        ui.phase("warn", f"Command {cmd} is not yet implemented in this view, but I'm working on it!")
+
+def _handle_model_cmd(ui: TerminalUI) -> None:
+    config = load_config()
+    client = OllamaClient(model=config.model, base_url=config.base_url)
+    try:
+        names = client.list_model_names()
+        if not names:
+            ui.phase("warn", "No models found in Ollama.")
+            return
+        
+        choice = ui.select_option("Select AI Model", names, current=config.model)
+        if choice:
+            config.model = choice
+            save_config(config)
+            ui.phase("done", f"Model updated to: {choice}")
+    except Exception as e:
+        ui.phase("warn", f"Could not list models: {e}")
 
 def _check_for_updates(ui: TerminalUI) -> None:
     try:
@@ -140,7 +104,7 @@ def _check_for_updates(ui: TerminalUI) -> None:
         if res.returncode == 0:
             count = int(res.stdout.strip() or "0")
             if count > 0:
-                ui.console.print(Panel(f"Update Available! Codex is {count} commits behind. Run 'git pull'.", border_style="yellow"))
+                ui.console.print(Panel(f"Update Available! Codin is {count} commits behind. Run '/update apply'.", border_style="yellow"))
         sentinel.touch()
     except: pass
 
@@ -149,13 +113,12 @@ def main(argv: list[str] | None = None) -> int:
     bootstrap_local_files()
     ui = TerminalUI()
     _check_for_updates(ui)
+    
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv: return _interactive_shell(ui)
     
-    # Simple argument parsing for this test
-    if argv[0] == "run":
-        return _run(ui, " ".join(argv[1:]), [], [], None, False, True, False)
-    return _interactive_shell(ui)
+    # One-shot execution
+    return orchestrator_run_request(request=" ".join(argv), ui=ui, is_interactive=False)
 
 if __name__ == "__main__":
     sys.exit(main())
