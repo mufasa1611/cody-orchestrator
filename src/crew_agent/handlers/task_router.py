@@ -28,7 +28,6 @@ SPECIALISTS: tuple[TaskSpecialist, ...] = (
 from crew_agent.core.memory import (
     is_identity_question,
     is_user_identity_question,
-    is_greeting,
     load_workspace_memory,
 )
 
@@ -44,11 +43,9 @@ def resolve_execution_plan(
     lowered = request.lower().strip()
     
     # 0. Fast Identity & Chat Checks
-    if is_identity_question(lowered) or is_user_identity_question(lowered) or is_greeting(lowered):
+    if is_identity_question(lowered) or is_user_identity_question(lowered):
         memory = load_workspace_memory()
-        if is_greeting(lowered):
-            msg = f"Hello! I am {memory.assistant_name}. How can I assist you today?"
-        elif is_identity_question(lowered):
+        if is_identity_question(lowered):
             msg = f"My name here is {memory.assistant_name}."
         else:
             msg = f"Your name here is {memory.user_name or 'unknown'}."

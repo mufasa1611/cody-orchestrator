@@ -100,11 +100,6 @@ def _load_history_summaries(limit: int = 10) -> tuple[str, ...]:
     return tuple(summaries)
 
 
-def is_greeting(request: str) -> bool:
-    greetings = {"hi", "hello", "hey", "greetings", "good morning", "good evening", "yo"}
-    return request.strip().lower().rstrip("!?.") in greetings
-
-
 def extract_assistant_name_assignment(request: str) -> str | None:
     lowered = " ".join(request.casefold().split())
     if any(

@@ -32,6 +32,7 @@ Rules:
 - Even if a request is purely research-based, you MUST provide at least one executable step.
 - For change and edit steps, you MUST provide a verify_command to confirm the success of the action. Don't claim success unless verified.
 - Avoid placeholder or weak commands that return nothing.
+- If the user request is a casual greeting (e.g., 'hi', 'hello') or a conversational question that does not require executing commands, return an empty `steps` array and put your friendly response in the `summary` field. You do not need to provide steps for simple chat.
 - Example Windows inspection command for PowerShell version:
   `$PSVersionTable.PSVersion | Select-Object Major,Minor,Build,Revision | ConvertTo-Json -Compress`
 - Example Windows inspection command for service status:
@@ -252,3 +253,4 @@ def create_execution_plan(
             "Planner returned no executable steps. Rephrase the request more concretely."
         )
     return plan
+  return plan
