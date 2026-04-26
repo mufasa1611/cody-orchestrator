@@ -72,14 +72,18 @@ def _windows_universal_file_plan(request: str, hosts: list[Host]) -> ExecutionPl
 
     # 3. Smart Extension & Mode Filter
     is_count = any(t in lowered for t in ("how many", "count", "total"))
-    
-    # PRO RESOURCE DETECTION: Explicitly check for files vs folders
-    # If any extension is found, it's a FILE query
-    ext_match = re.search(r"\b([a-z0-9]{2,4})\b files?", lowered)
     has_image_keyword = any(t in lowered for t in ("image", "picture"))
     
-    is_file_query = ext_match is not None or has_image_keyword or "file" in lowered
-    is_folder_query = ("folder" in lowered or "directory" in lowered or "dir" in lowered) and not is_file_query
+    # PRO RESOURCE DETECTION: 
+    is_folder_query = any(t in lowered for t in ("folder", "directory", "dir", "folders"))
+    
+    if is_folder_query:
+        # If they explicitly said 'folder', ignore all file keywords
+        is_file_query = False
+    else:
+        # Otherwise, check for files/extensions
+        ext_match = re.search(r"\b([a-z0-9]{2,4})\b files?", lowered)
+        is_file_query = ext_match is not None or has_image_keyword or "file" in lowered
     
     mode_filter = "Where-Object { $_.PSIsContainer }" if is_folder_query else "Where-Object { -not $_.PSIsContainer }"
     resource_type = "folders" if is_folder_query else "files"

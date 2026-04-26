@@ -95,12 +95,14 @@ def get_last_messages_from_db(limit: int = 10) -> list[dict[str, str]]:
                 (limit,)
             )
             rows = cursor.fetchall()
-            # Reverse to get chronological order
             for role, content in reversed(rows):
                 messages.append({"role": role, "content": content})
     except Exception:
         pass
     return messages
+
+
+def save_run_to_db(
     run_id: str,
     request: str,
     plan_summary: str,
@@ -115,15 +117,13 @@ def get_last_messages_from_db(limit: int = 10) -> list[dict[str, str]]:
     
     init_db()
     db_path = get_db_path()
-    
     timestamp = datetime.now(timezone.utc).isoformat()
     
     try:
         final_exit_code = int(exit_code)
-    except (ValueError, TypeError):
+    except:
         final_exit_code = 1
     
-    # Simple extraction of files touched from results if available
     files_touched = []
     for r in results:
         if hasattr(r, 'target_path') and r.target_path:
@@ -134,7 +134,6 @@ def get_last_messages_from_db(limit: int = 10) -> list[dict[str, str]]:
             "INSERT INTO runs (id, timestamp, request, summary, domain, risk, exit_code, files_touched, rollback_triggered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (run_id, timestamp, request, plan_summary, domain, risk, final_exit_code, ",".join(files_touched), 1 if rollback_triggered else 0)
         )
-        
         for r in results:
             step_id = getattr(r, 'step_id', '')
             title = getattr(r, 'title', '')
@@ -151,17 +150,14 @@ def get_last_messages_from_db(limit: int = 10) -> list[dict[str, str]]:
                 INSERT INTO steps (run_id, step_id, title, command, host, success, stdout, stderr, duration, target_path, destructive)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (run_id, step_id, title, command, host, success, stdout, stderr, duration, target_path, destructive))
-        
         conn.commit()
 
 
 def get_recent_history_context(limit: int = 5) -> list[str]:
     if sqlite3 is None:
         return []
-    
     init_db()
     db_path = get_db_path()
-    
     summaries = []
     try:
         with sqlite3.connect(db_path) as conn:
