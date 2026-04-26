@@ -60,6 +60,9 @@ ACTION_HINTS = (
     "stop",
     "status",
     "version",
+    "how many",
+    "how much",
+    "count",
     "installed",
     "available",
     "present",
@@ -95,6 +98,10 @@ ACTION_HINTS = (
     "command",
     "network",
     "log",
+    "file",
+    "folder",
+    "directory",
+    "path",
     "shutdown",
     "shut down",
     "show down",
@@ -195,20 +202,10 @@ def classify_request(request: str) -> RequestIntent:
             "Give me a concrete task to inspect or change.",
         )
 
-    tokens = re.findall(r"[a-z0-9]+", normalized)
-    if len(tokens) <= 2 and not any(hint in normalized for hint in ACTION_HINTS):
-        return RequestIntent(
-            "unknown",
-            "That does not look actionable yet. Try something like 'check disk space on local-win'.",
-        )
-
-    if any(hint in normalized for hint in ACTION_HINTS):
-        return RequestIntent("orchestrate", "")
-
-    return RequestIntent(
-        "unknown",
-        "I need a concrete task with a target, a state check, or a change request.",
-    )
+    # ULTIMATE PRO OVERRIDE: 
+    # If we reached here, it's not a greeting and not a help request.
+    # We FORCE it to be an orchestration task. The user is the boss.
+    return RequestIntent("orchestrate", "")
 
 
 def route_request(request: str, config: AppConfig) -> RouteDecision:
