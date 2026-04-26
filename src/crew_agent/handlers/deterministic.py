@@ -32,6 +32,9 @@ def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     if _looks_like_search_request(lowered):
         return _windows_search_plan(request, windows_hosts)
 
+    if _looks_like_file_count_request(lowered):
+        return _windows_file_count_plan(request, windows_hosts)
+
     if _looks_like_disk_inventory_request(lowered):
         return _windows_disk_inventory_plan(windows_hosts)
 
@@ -427,6 +430,71 @@ def _windows_content_search_plan(request: str, hosts: list[Host]) -> ExecutionPl
         target_hosts=[host.name for host in hosts],
         steps=steps,
         raw={"builtin": True, "handler": "grep", "specialist": "infra-inspector"},
+    )
+
+
+def _looks_like_file_count_request(lowered: str) -> bool:
+    count_terms = ("how many", "count", "total number of")
+    file_terms = ("file", "files", "document", "documents", "txt", "log")
+    return any(term in lowered for term in count_terms) and any(term in lowered for term in file_terms)
+
+
+def _windows_file_count_plan(request: str, hosts: list[Host]) -> ExecutionPlan:
+    lowered = request.lower()
+    # Map common folder names to their environment variables or paths
+    target_path = "C:\\"
+    folder_name = "C: drive"
+    
+    if "documents" in lowered:
+        target_path = "$([Environment]::GetFolderPath('MyDocuments'))"
+        folder_name = "Documents folder"
+    elif "desktop" in lowered:
+        target_path = "$([Environment]::GetFolderPath('Desktop'))"
+        folder_name = "Desktop folder"
+    elif "downloads" in lowered:
+        # Downloads is not a standard special folder, handle separately
+        target_path = "$env:USERPROFILE\\Downloads"
+        folder_name = "Downloads folder"
+
+    # Extraction for extension
+    ext_filter = "*"
+    if "text file" in lowered or ".txt" in lowered:
+        ext_filter = "*.txt"
+    elif "log file" in lowered or ".log" in lowered:
+        ext_filter = "*.log"
+
+    command = (
+        f"$target = {target_path}; "
+        f"$files = Get-ChildItem -Path $target -Filter '{ext_filter}' -Recurse -File -ErrorAction SilentlyContinue; "
+        "$count = ($files | Measure-Object).Count; "
+        f"[pscustomobject]@{{Folder='{folder_name}'; Filter='{ext_filter}'; Count=$count}} | ConvertTo-Json -Compress"
+    )
+    
+    steps = [
+        PlanStep(
+            id=f"builtin-count-{index}",
+            title=f"Count {ext_filter} files in {folder_name}",
+            host=host.name,
+            kind="inspect",
+            rationale="Handled by Cody's built-in fast-count handler.",
+            command=command,
+            expected_signal="JSON object with file count",
+            validation_type="file_count_json",
+        )
+        for index, host in enumerate(hosts, start=1)
+    ]
+    return ExecutionPlan(
+        summary=f"Count {ext_filter} files in {folder_name} on Windows hosts.",
+        planner_notes=["matched built-in deterministic fast-count handler"],
+        risk="low",
+        domain="infra",
+        operation_class="inspect",
+        requires_confirmation=False,
+        requires_unsafe=False,
+        missing_information=[],
+        target_hosts=[host.name for host in hosts],
+        steps=steps,
+        raw={"builtin": True, "handler": "count", "specialist": "infra-inspector"},
     )
 
 

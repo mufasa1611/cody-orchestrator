@@ -209,7 +209,25 @@ class TerminalUI:
             return self._render_single_object_payload(payload, result.host, "PowerShell Version")
         if result.validation_type == "grep_json":
             return self._render_grep_payload(payload, result.host)
+        if result.validation_type == "file_count_json":
+            return self._render_file_count_payload(payload, result.host)
         return False
+
+    def _render_file_count_payload(self, payload: object, host: str) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        
+        folder = payload.get("Folder", "Unknown")
+        filter_str = payload.get("Filter", "*")
+        count = payload.get("Count", 0)
+        
+        self.console.print(Panel(
+            f"Folder: [cyan]{folder}[/cyan]\nFilter: [yellow]{filter_str}[/yellow]\nTotal Count: [bold green]{count}[/bold green]",
+            title=f"File Count Summary ({host})",
+            border_style="green",
+            expand=False
+        ))
+        return True
 
     def _render_grep_payload(self, payload: object, host: str) -> bool:
         items = payload if isinstance(payload, list) else [payload]
