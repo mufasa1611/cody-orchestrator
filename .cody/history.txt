@@ -83,3 +83,6 @@
 
 # 2026-04-26 20:26:51.971698
 +how many jpeg files in documents folder 
+
+# 2026-04-26 21:06:26.396464
++how many png files in documents folder 

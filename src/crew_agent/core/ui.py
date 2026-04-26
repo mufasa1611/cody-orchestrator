@@ -231,13 +231,17 @@ class TerminalUI:
             expand=False
         ))
 
-        if isinstance(items, list) and items:
+        if items:
             table = Table(title="Items Found", border_style="cyan", expand=True)
             table.add_column("Path", style="blue")
-            for item in items[:100]: # Show up to 100 links
-                table.add_row(self._make_link(item, item))
-            if len(items) > 100:
-                table.add_row(f"[dim]... and {len(items) - 100} more items.[/dim]")
+            
+            # PRO FIX: Convert single string to list if necessary
+            final_items = items if isinstance(items, list) else [items]
+            
+            for item in final_items[:100]: # Show up to 100 links
+                table.add_row(self._make_link(str(item), str(item)))
+            if len(final_items) > 100:
+                table.add_row(f"[dim]... and {len(final_items) - 100} more items.[/dim]")
             self.console.print(table)
             
         return True
