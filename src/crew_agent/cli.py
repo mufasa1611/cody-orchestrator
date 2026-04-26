@@ -115,8 +115,14 @@ def main(argv: list[str] | None = None) -> int:
     _check_for_updates(ui)
     
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv: return _interactive_shell(ui)
+    if not argv: 
+        return _interactive_shell(ui)
     
+    if "--version" in argv:
+        from crew_agent import __version__
+        print(f"Codin v{__version__}")
+        return 0
+
     # One-shot execution
     return orchestrator_run_request(request=" ".join(argv), ui=ui, is_interactive=False)
 
