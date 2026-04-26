@@ -54,10 +54,10 @@ def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
 # --- DETECTION LOGIC (STRICT) ---
 
 def _looks_like_file_count_request(lowered: str) -> bool:
-    count_terms = ("how many", "count", "total number of", "sum of")
-    resource_terms = ("file", "folder", "directory", "dir")
-    # Must have both a count intent and a resource target
-    return any(t in lowered for t in count_terms) and any(t in lowered for t in resource_terms)
+    # Simpler, broader matching
+    has_count = any(t in lowered for t in ("how many", "count", "total", "sum", "number of"))
+    has_resource = any(t in lowered for t in ("file", "folder", "directory", "dir", "document", "video", "music", "picture", "desktop", "download"))
+    return has_count and has_resource
 
 
 def _looks_like_content_search_request(lowered: str) -> bool:
