@@ -57,10 +57,50 @@ def init_db() -> None:
                 FOREIGN KEY(run_id) REFERENCES runs(id)
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS conversation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL
+            )
+        """)
         conn.commit()
 
 
-def save_run_to_db(
+def save_message_to_db(role: str, content: str) -> None:
+    if sqlite3 is None:
+        return
+    init_db()
+    db_path = get_db_path()
+    timestamp = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO conversation (timestamp, role, content) VALUES (?, ?, ?)",
+            (timestamp, role, content)
+        )
+        conn.commit()
+
+
+def get_last_messages_from_db(limit: int = 10) -> list[dict[str, str]]:
+    if sqlite3 is None:
+        return []
+    init_db()
+    db_path = get_db_path()
+    messages = []
+    try:
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.execute(
+                "SELECT role, content FROM conversation ORDER BY timestamp DESC LIMIT ?",
+                (limit,)
+            )
+            rows = cursor.fetchall()
+            # Reverse to get chronological order
+            for role, content in reversed(rows):
+                messages.append({"role": role, "content": content})
+    except Exception:
+        pass
+    return messages
     run_id: str,
     request: str,
     plan_summary: str,

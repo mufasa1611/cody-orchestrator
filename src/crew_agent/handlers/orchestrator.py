@@ -167,6 +167,11 @@ def run_request(
 
     # 6. Finalize
     exit_code = 0 if (results and results[-1].success) else 1
+    
+    # PRO MEMORY: Record the final success in the thread
+    if exit_code == 0 and thread:
+        thread.add_message("assistant", f"I successfully completed the request: {plan.summary}")
+
     log_path = save_run_log(request, plan, results, actual_permission_mode, str(backup_dir) if backup_dir else None)
     
     ui.show_answer_summaries(build_answer_summaries(plan, results, ui))

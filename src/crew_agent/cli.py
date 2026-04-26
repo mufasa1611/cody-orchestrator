@@ -39,7 +39,13 @@ def _interactive_shell(ui: TerminalUI) -> int:
     ui.banner(f"interactive shell ready\nmodel={config.model} enabled_hosts={len([h for h in inventory if h.enabled])}")
     ui.phase("thinking", "Enter any natural language task or a /command.")
 
-    thread = ConversationThread()
+    # NEW: Initialize persistent conversation thread with DB history
+    from crew_agent.core.db import get_last_messages_from_db
+    from crew_agent.core.models import ConversationThread, ConversationMessage
+    
+    db_messages = get_last_messages_from_db(limit=10)
+    msg_objects = [ConversationMessage(role=m['role'], content=m['content']) for m in db_messages]
+    thread = ConversationThread(messages=msg_objects)
     slash_commands = [
         "/help", "/doctor", "/inventory", "/status", "/model", "/permissions", 
         "/approvals", "/agents", "/backup", "/runs", "/update", "/exit", "/quit"

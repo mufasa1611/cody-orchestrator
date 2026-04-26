@@ -43,10 +43,17 @@ class ConversationThread:
     messages: list[ConversationMessage] = field(default_factory=list)
     
     def add_message(self, role: str, content: str):
+        # 1. Update in-memory sliding window
         self.messages.append(ConversationMessage(role=role, content=content))
-        # Sliding window: keep last 10 messages (5 turns)
         if len(self.messages) > 10:
             self.messages = self.messages[-10:]
+            
+        # 2. Persist to DB (for cross-session memory)
+        from crew_agent.core.db import save_message_to_db
+        try:
+            save_message_to_db(role, content)
+        except:
+            pass
 
     def format_for_llm(self) -> str:
         return "\n".join([f"{m.role.upper()}: {m.content}" for m in self.messages])
