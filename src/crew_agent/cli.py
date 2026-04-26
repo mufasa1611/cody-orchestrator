@@ -49,12 +49,21 @@ def ensure_truthful_model(ui: TerminalUI, config: AppConfig) -> AppConfig:
         if choice:
             config.model = choice
             save_config(config)
-            # Warm up the new selection
-            ui.phase("thinking", f"Loading {choice} onto GPU...")
+            # PRO LOGIC: Blocking Wait for Load
+            ui.phase("thinking", f"Loading {choice} onto GPU (this can take a moment for large models)...")
             client = OllamaClient(model=choice, base_url=config.base_url)
             client.warm_up()
-        else:
-            ui.phase("warn", "No model selected. Defaulting to config (may be slow).")
+            
+            # POLL for reality
+            max_attempts = 30
+            for attempt in range(max_attempts):
+                real_check = client.get_running_model()
+                if real_check and choice in real_check:
+                    ui.phase("done", f"Model {choice} is now fully resident in GPU.")
+                    break
+                time.sleep(2)
+            else:
+                ui.phase("warn", f"Model {choice} is taking a long time to load. It will be ready shortly.")
             
     return config
 

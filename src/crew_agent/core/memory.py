@@ -10,7 +10,7 @@ from crew_agent.core.db import get_recent_history_context
 from crew_agent.core.paths import ensure_app_dirs
 
 
-DEFAULT_ASSISTANT_NAME = "Cody"
+DEFAULT_ASSISTANT_NAME = "Codin"
 MEMO_FILENAME = "memo.md"
 
 
@@ -98,6 +98,11 @@ def _load_history_summaries(limit: int = 10) -> tuple[str, ...]:
     except Exception:
         pass
     return tuple(summaries)
+
+
+def is_greeting(request: str) -> bool:
+    greetings = {"hi", "hello", "hey", "greetings", "good morning", "good evening", "yo"}
+    return request.strip().lower().rstrip("!?.") in greetings
 
 
 def extract_assistant_name_assignment(request: str) -> str | None:
