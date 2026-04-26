@@ -53,3 +53,18 @@
 
 # 2026-04-26 18:47:59.359177
 +how many files and folders in the X:\Katalog\test folder
+
+# 2026-04-26 19:06:47.612456
++how many pdf files in the downloads folder
+
+# 2026-04-26 19:09:36.630221
++tell me the names of those pdf files
+
+# 2026-04-26 19:12:07.090820
++i see 5 files why do you count 7 items
+
+# 2026-04-26 19:13:51.179016
++i am asking about the same pdf files which i see the 5 names and you count 7 items or files
+
+# 2026-04-26 19:14:13.448211
++the pdf files

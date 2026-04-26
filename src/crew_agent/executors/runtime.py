@@ -84,6 +84,11 @@ def _execute_linux_local(host: Host, command: str, timeout: int) -> CommandResul
 
 def _execute_edit(command: str) -> CommandResult:
     try:
+        # PRO JSON REPAIR: If the model used single quotes, swap them for doubles
+        # (Simple but effective for most LLM output)
+        if "'" in command and '"' not in command:
+            command = command.replace("'", '"')
+            
         data = json.loads(command)
         file_path = data.get("file_path")
         old_string = data.get("old_string")

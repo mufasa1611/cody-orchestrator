@@ -620,7 +620,7 @@ def _interactive_shell(ui: TerminalUI) -> int:
 
     while True:
         try:
-            request = session.prompt("codex> ").strip()
+            request = session.prompt("codin> ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0

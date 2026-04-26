@@ -9,65 +9,137 @@ from crew_agent.core.models import ExecutionPlan, Host, PlanStep
 
 
 def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
+    """
+    Entry point for high-precision local automation.
+    Priority: Specific Maintenance -> Universal File Counter -> Content Search
+    """
     raw_input = request.lower()
+    lowered = " ".join(request.casefold().split())
     windows_hosts = [host for host in hosts if host.platform == "windows" and host.enabled]
     if not windows_hosts:
         return None
 
+    # 1. Identity & System (Instant)
+    if ("powershell" in lowered or "pwsh" in lowered) and "version" in lowered:
+        return _windows_powershell_version_plan(windows_hosts)
+
+    # 2. Universal File/Folder Counter (Pro Two-Step Logic)
     if _looks_like_file_query(raw_input):
         return _windows_universal_file_plan(request, windows_hosts)
-    
-    # ... rest of handlers
+
+    # 3. Content Search (Grep)
+    if _looks_like_content_search_request(lowered):
+        return _windows_content_search_plan(request, windows_hosts)
+
+    # 4. Cleanup
+    if _looks_like_cleanup_request(lowered):
+        return _windows_cleanup_plan(windows_hosts)
+
     return None
 
-def _resolve_folder_path_python(folder_name: str) -> str | None:
-    folder_name = folder_name.lower().strip()
+
+# --- PRO PATH RESOLVER (Direct API) ---
+
+def _resolve_folder_path_locally(folder_name: str) -> str | None:
+    """Direct Windows API call to resolve special folders instantly."""
+    folder_name = folder_name.lower()
     
-    # 1. Check Windows Known Folders
-    ids = {"document": 5, "desktop": 0, "video": 14, "music": 13, "picture": 39}
-    for key, cid in ids.items():
-        if key in folder_name:
+    CSIDL_PERSONAL = 5    # Documents
+    CSIDL_DESKTOP = 0     # Desktop
+    CSIDL_MYVIDEO = 14    # Videos
+    CSIDL_MYMUSIC = 13    # Music
+    CSIDL_MYPICTURES = 39 # Pictures
+
+    def get_win_path(id):
+        try:
             buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
-            ctypes.windll.shell32.SHGetFolderPathW(None, cid, None, 0, buf)
+            ctypes.windll.shell32.SHGetFolderPathW(None, id, None, 0, buf)
             return buf.value
-            
-    if "download" in folder_name:
-        return os.path.join(os.environ['USERPROFILE'], 'Downloads')
+        except:
+            return None
 
-    # 2. Shallow drive root check
-    for drive in ['C:\\', 'D:\\', 'E:\\', 'X:\\']:
-        cand = os.path.join(drive, folder_name)
-        if os.path.exists(cand):
-            return cand
-            
+    if "document" in folder_name: return get_win_path(CSIDL_PERSONAL)
+    if "desktop" in folder_name: return get_win_path(CSIDL_DESKTOP)
+    if "video" in folder_name: return get_win_path(CSIDL_MYVIDEO)
+    if "music" in folder_name: return get_win_path(CSIDL_MYMUSIC)
+    if "picture" in folder_name: return get_win_path(CSIDL_MYPICTURES)
+    if "download" in folder_name: return os.path.join(os.getenv('USERPROFILE', ''), 'Downloads')
+
+    # Shallow drive root check
+    try:
+        for drive in ['C:\\', 'D:\\', 'E:\\', 'X:\\']:
+            if os.path.exists(os.path.join(drive, folder_name)):
+                return os.path.join(drive, folder_name)
+    except:
+        pass
+
     return None
+
+
+# --- DETECTION LOGIC ---
 
 def _looks_like_file_query(l: str) -> bool:
-    return any(t in l for t in ("how many", "count", "total", "list", "show", "contents")) and \
-           any(t in l for t in ("file", "folder", "directory", "dir", "video", "document", "music", "desktop"))
+    count_terms = ("how many", "count", "total", "sum", "number of", "list", "show", "contents")
+    resource_terms = ("file", "folder", "directory", "dir", "video", "document", "music", "desktop", "download")
+    return any(t in l for t in count_terms) and any(t in l for t in resource_terms)
+
+def _looks_like_content_search_request(l: str) -> bool:
+    return any(t in l for t in ("content", "inside", "contains", "grep"))
+
+def _looks_like_cleanup_request(l: str) -> bool:
+    return any(t in l for t in ("cleanup", "clean up", "wipe")) and any(t in l for t in ("temp", "tmp", "cache"))
+
+
+# --- PLAN GENERATORS ---
 
 def _windows_universal_file_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     lowered = request.lower()
-    match = re.search(r"(?:in|of) (?:the )?([A-Za-z0-9._/\\-]+)", lowered)
-    target_name = match.group(1) if match else "videos"
+    path_match = re.search(r"(?:in|of) (?:the )?([A-Za-z0-9._/\\-]+)", lowered)
+    folder_name = path_match.group(1) if path_match else "documents"
     
-    # DO THE WORK IN PYTHON
-    resolved_path = _resolve_folder_path_python(target_name)
-    if not resolved_path:
-        return None
+    resolved_path = _resolve_folder_path_locally(folder_name)
+    if not resolved_path: return None
 
     is_count = any(t in lowered for t in ("how many", "count", "total"))
     is_folder = "folder" in lowered
+    mode_filter = "Where-Object { $_.PSIsContainer }" if is_folder else "Where-Object { -not $_.PSIsContainer }"
     
     if is_count:
-        cmd = f"@(Get-ChildItem -Path '{resolved_path}' -ErrorAction SilentlyContinue | Where-Object {{ {'$_.PSIsContainer' if is_folder else '-not $_.PSIsContainer'} }}).Count"
-        title = f"Count {('folders' if is_folder else 'files')} in {target_name}"
+        cmd = f"@(Get-ChildItem -Path '{resolved_path}' -ErrorAction SilentlyContinue | {mode_filter}).Count"
+        title = f"Count {('folders' if is_folder else 'files')} in {folder_name}"
     else:
-        cmd = f"Get-ChildItem -Path '{resolved_path}' -ErrorAction SilentlyContinue | Where-Object {{ {'$_.PSIsContainer' if is_folder else '-not $_.PSIsContainer'} }} | Select-Object -ExpandProperty Name"
-        title = f"List {target_name}"
+        cmd = f"Get-ChildItem -Path '{resolved_path}' -ErrorAction SilentlyContinue | {mode_filter} | Select-Object -ExpandProperty Name"
+        title = f"List {folder_name}"
 
     return _single_inspect_plan(hosts, f"Action in {resolved_path}", title, cmd, "Result", "text")
 
+
+def _windows_content_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
+    match = re.search(r"(?:for|contains) ['\"]?([^'\"]+)['\"]?", request, re.IGNORECASE)
+    if not match: return None
+    pattern = match.group(1)
+    # PRO UNIVERSAL SEARCH: Scan User Profile and all drive roots
+    command = (
+        f"$pattern = '{pattern}'; "
+        "$roots = @($env:USERPROFILE); "
+        "$drives = Get-PSDrive -PSProvider FileSystem; foreach($d in $drives) { if($d.Root -notmatch 'C:') { $roots += $d.Root } }; "
+        "Get-ChildItem -Path $roots -Include *.txt,*.log,*.md,*.json,*.py,*.env,*.yaml,*.yml -Recurse -ErrorAction SilentlyContinue | "
+        "Where-Object { $_.FullName -notmatch '\\\\.(cody|git|gemini|venv)' } | "
+        "Select-String -Pattern $pattern | "
+        "Select-Object @{Name='File';Expression={$_.Path}}, LineNumber, @{Name='Content';Expression={$_.Line.Trim()}} | "
+        "ConvertTo-Json"
+    )
+    return _single_inspect_plan(hosts, f"Search all drives for '{pattern}'.", f"Grep for '{pattern}'", command, "JSON", "grep_json")
+
+
+# --- UTILITIES ---
+
 def _single_inspect_plan(hosts, summary, title, command, expected, val_type):
     steps = [PlanStep(id=f"builtin-{i}", title=title, host=h.name, kind="inspect", command=command, expected_signal=expected, validation_type=val_type, accept_nonzero_returncode=True) for i, h in enumerate(hosts, start=1)]
-    return ExecutionPlan(summary=summary, risk="low", domain="infra", operation_class="inspect", target_hosts=[h.name for h in hosts], steps=steps, raw={"builtin": True})
+    return ExecutionPlan(summary=summary, risk="low", domain="infra", operation_class="inspect", target_hosts=[h.name for h in hosts], steps=steps, raw={"builtin": True, "handler": val_type})
+
+def _windows_powershell_version_plan(hosts):
+    return _single_inspect_plan(hosts, "PS Version", "Get PS Version", "$PSVersionTable.PSVersion | ConvertTo-Json", "JSON", "powershell_version_json")
+
+def _windows_cleanup_plan(hosts):
+    return _single_inspect_plan(hosts, "Cleanup Temp", "Cleanup", "Remove-Item $env:TEMP\\* -Recurse -Force -ErrorAction SilentlyContinue; 'Done'", "Text", "text")
