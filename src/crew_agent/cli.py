@@ -36,8 +36,24 @@ def _interactive_shell(ui: TerminalUI) -> int:
     config = load_config()
     inventory = load_inventory()
     
+    # PRO TRUTH-STARTUP: Check what is REALLY in memory
+    ui.phase("thinking", "Scanning GPU for active models...")
+    client = OllamaClient(model=config.model, base_url=config.base_url)
+    real_model = client.get_running_model()
+    
+    if real_model:
+        if real_model != config.model:
+            config.model = real_model
+            save_config(config)
+            ui.phase("done", f"Detected active model: {real_model}")
+    else:
+        # Nothing is loaded; force selection before we even show the banner
+        ui.phase("warn", "No model is currently loaded in your GPU.")
+        _handle_model_cmd(ui)
+        # Reload config after selection
+        config = load_config()
+
     ui.banner(f"interactive shell ready\nmodel={config.model} enabled_hosts={len([h for h in inventory if h.enabled])}")
-    ui.phase("thinking", "Enter any natural language task or a /command.")
 
     # NEW: Initialize persistent conversation thread with DB history
     from crew_agent.core.db import get_last_messages_from_db

@@ -44,6 +44,19 @@ class OllamaClient:
             if str(item.get("name", "")).strip()
         ]
 
+    def get_running_model(self) -> str | None:
+        """Returns the name of the model currently loaded in memory/GPU."""
+        try:
+            response = requests.get(f"{self.base_url}/api/ps", timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                models = data.get("models", [])
+                if models:
+                    return str(models[0].get("name"))
+        except:
+            pass
+        return None
+
     def unload_model(self) -> None:
         """Explicitly unloads the model from VRAM/RAM."""
         try:
