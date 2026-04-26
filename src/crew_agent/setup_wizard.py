@@ -117,6 +117,7 @@ def run_setup_wizard() -> str | None:
     console.print(Panel("[bold green]Welcome to Codex - First Run Setup[/bold green]", expand=False))
     
     # 1. Check Ollama
+    # ... rest of logic
     console.print("Checking for Ollama...")
     if not check_ollama():
         console.print("[yellow]Ollama is not running.[/yellow]")

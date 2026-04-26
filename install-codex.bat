@@ -64,12 +64,14 @@ if !errorlevel! neq 0 (
 :: 6. Create global command alias
 echo.
 echo Setting up global 'codex' command...
-set "CMD_PATH=%USERPROFILE%\codex.cmd"
+set "LAUNCHER_DIR=%USERPROFILE%"
+set "CMD_PATH=%LAUNCHER_DIR%\codex.cmd"
 (
 echo @echo off
 echo setlocal
 echo set "VENV_PYTHON=%INSTALL_PATH%\venv\Scripts\python.exe"
 echo set "CODY_HOME=%INSTALL_PATH%\.cody"
+echo set "PYTHONPATH=%INSTALL_PATH%\src"
 echo if "%%~1"=="" ^(
 echo     "%%VENV_PYTHON%%" -m crew_agent.cli shell
 echo ^) else ^(
@@ -78,9 +80,31 @@ echo ^)
 echo endlocal
 ) > "%CMD_PATH%"
 
+:: 7. Check if launcher dir is in PATH (The "Pro" logic)
+powershell -NoProfile -Command ^
+  "$launcher = [IO.Path]::GetFullPath('%LAUNCHER_DIR%');" ^
+  "$userPath = [Environment]::GetEnvironmentVariable('PATH','User');" ^
+  "$entries = @(); if ($userPath) { $entries = $userPath -split ';' | Where-Object { $_ } };" ^
+  "if ($entries -contains $launcher) { exit 0 } else { exit 1 }"
+
+if errorlevel 1 (
+    echo.
+    echo [!] Global PATH check: "%LAUNCHER_DIR%" is not in your user PATH.
+    set /p "ADD_TO_PATH=Add it now so 'codex' works in any new terminal? [Y/n]: "
+    if /I not "!ADD_TO_PATH!"=="n" (
+        powershell -NoProfile -Command ^
+          "$launcher = [IO.Path]::GetFullPath('%LAUNCHER_DIR%');" ^
+          "$userPath = [Environment]::GetEnvironmentVariable('PATH','User');" ^
+          "$entries = @(); if ($userPath) { $entries = $userPath -split ';' | Where-Object { $_ } };" ^
+          "if ($entries -notcontains $launcher) { $entries += $launcher };" ^
+          "[Environment]::SetEnvironmentVariable('PATH', ($entries -join ';'), 'User')"
+        echo Success: Added to user PATH.
+    )
+)
+
 echo ===================================================
 echo Installation Complete!
-echo You can now type 'codex' from anywhere to start.
-echo On your first run, Codex will help you set up Ollama and pick an AI model.
+echo You can now type 'codex' from anywhere.
+echo On your first run, Codex will help you set up Ollama.
 echo ===================================================
 pause
