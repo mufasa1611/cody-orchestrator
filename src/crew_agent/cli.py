@@ -55,6 +55,7 @@ KNOWN_COMMANDS = {
     "run",
     "shell",
     "help",
+    "update",
 }
 
 

@@ -14,3 +14,12 @@
 
 # 2026-04-26 00:52:35.863990
 +search the text files content for sandra_home API token was successfully created
+
+# 2026-04-26 01:13:43.041463
++/model
+
+# 2026-04-26 01:20:18.061792
++how many HD and partaions we have in the sys
+
+# 2026-04-26 01:21:51.098995
++how much free space in the drive c: and d:
