@@ -80,3 +80,6 @@
 
 # 2026-04-26 20:21:08.814575
 +how many pdf files in documents folder 
+
+# 2026-04-26 20:26:51.971698
++how many jpeg files in documents folder 

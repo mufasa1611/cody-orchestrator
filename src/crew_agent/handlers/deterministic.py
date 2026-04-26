@@ -119,17 +119,40 @@ def _windows_universal_file_plan(request: str, hosts: list[Host]) -> ExecutionPl
     mode_filter = "Where-Object { $_.PSIsContainer }" if is_folder_only else "Where-Object { -not $_.PSIsContainer }"
     resource_type = "folders" if is_folder_only else "files"
 
-    # Smart Extension Filter
+    # PRO EXTENSION RESOLVER: Find any specific extension mentioned (e.g. jpeg, pdf, txt)
     ext_filter = "*"
-    if "pdf" in lowered: ext_filter = "*.pdf"
-    elif "text" in lowered or "txt" in lowered: ext_filter = "*.txt"
+    # Look for words like 'jpeg', 'pdf', '.txt'
+    ext_match = re.search(r"\b([a-z0-9]{2,4})\b files?", lowered)
+    if ext_match:
+        found_ext = ext_match.group(1)
+        if found_ext not in ("how", "many", "file", "folder", "list"):
+            ext_filter = f"*.{found_ext}"
+    
+    # Handle common groups
+    if "image" in lowered or "picture" in lowered:
+        ext_filter = "*.jpg,*.jpeg,*.png,*.gif,*.bmp"
+    elif "pdf" in lowered:
+        ext_filter = "*.pdf"
+    elif "text" in lowered or "txt" in lowered:
+        ext_filter = "*.txt"
+
     if is_count:
-        # PRO UPGRADE: Get the items, count them, but also keep the paths for the UI
-        cmd = (
-            f"$items = @(Get-ChildItem -Path '{resolved_path}' -Filter '{ext_filter}' -ErrorAction SilentlyContinue | {mode_filter}); "
-            f"$paths = $items | Select-Object -ExpandProperty FullName; "
-            f"[pscustomobject]@{{Folder='{resolved_path}'; Type='{resource_type}'; Filter='{ext_filter}'; Count=$items.Count; Items=$paths}} | ConvertTo-Json -Compress"
-        )
+        # PRO UPGRADE: Handle multi-filter strings (for images)
+        filter_parts = ext_filter.split(',')
+        if len(filter_parts) > 1:
+            # Multi-extension search logic
+            include_str = "'" + "','".join(filter_parts) + "'"
+            cmd = (
+                f"$items = @(Get-ChildItem -Path '{resolved_path}' -Include {include_str} -Recurse -ErrorAction SilentlyContinue | {mode_filter}); "
+                f"$paths = $items | Select-Object -ExpandProperty FullName; "
+                f"[pscustomobject]@{{Folder='{resolved_path}'; Type='{resource_type}'; Filter='{ext_filter}'; Count=$items.Count; Items=$paths}} | ConvertTo-Json -Compress"
+            )
+        else:
+            cmd = (
+                f"$items = @(Get-ChildItem -Path '{resolved_path}' -Filter '{ext_filter}' -ErrorAction SilentlyContinue | {mode_filter}); "
+                f"$paths = $items | Select-Object -ExpandProperty FullName; "
+                f"[pscustomobject]@{{Folder='{resolved_path}'; Type='{resource_type}'; Filter='{ext_filter}'; Count=$items.Count; Items=$paths}} | ConvertTo-Json -Compress"
+            )
         val_type = "file_count_json"
         title = f"Count {resource_type} ({ext_filter}) in {folder_name}"
     else:
