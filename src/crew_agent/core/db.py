@@ -33,7 +33,9 @@ def init_db() -> None:
                 summary TEXT,
                 domain TEXT,
                 risk TEXT,
-                exit_code INTEGER
+                exit_code INTEGER,
+                files_touched TEXT,
+                rollback_triggered INTEGER DEFAULT 0
             )
         """)
         conn.execute("""
@@ -48,6 +50,10 @@ def init_db() -> None:
                 stdout TEXT,
                 stderr TEXT,
                 duration REAL,
+                precheck_status TEXT,
+                postcheck_status TEXT,
+                target_path TEXT,
+                destructive INTEGER DEFAULT 0,
                 FOREIGN KEY(run_id) REFERENCES runs(id)
             )
         """)
@@ -61,7 +67,8 @@ def save_run_to_db(
     domain: str,
     risk: str,
     exit_code: Any,
-    results: list[Any]
+    results: list[Any],
+    rollback_triggered: bool = False
 ) -> None:
     if sqlite3 is None:
         return
@@ -71,34 +78,39 @@ def save_run_to_db(
     
     timestamp = datetime.now(timezone.utc).isoformat()
     
-    # PRO SAFETY: Ensure exit_code is a valid integer
     try:
         final_exit_code = int(exit_code)
     except (ValueError, TypeError):
         final_exit_code = 1
     
+    # Simple extraction of files touched from results if available
+    files_touched = []
+    for r in results:
+        if hasattr(r, 'target_path') and r.target_path:
+            files_touched.append(r.target_path)
+    
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "INSERT INTO runs (id, timestamp, request, summary, domain, risk, exit_code) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (run_id, timestamp, request, plan_summary, domain, risk, final_exit_code)
+            "INSERT INTO runs (id, timestamp, request, summary, domain, risk, exit_code, files_touched, rollback_triggered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (run_id, timestamp, request, plan_summary, domain, risk, final_exit_code, ",".join(files_touched), 1 if rollback_triggered else 0)
         )
         
         for r in results:
-            # results are StepExecutionResult objects or dicts depending on caller
-            # to be safe we handle both
-            step_id = getattr(r, 'step_id', r.get('step_id') if isinstance(r, dict) else '')
-            title = getattr(r, 'title', r.get('title') if isinstance(r, dict) else '')
-            command = getattr(r, 'command', r.get('command') if isinstance(r, dict) else '')
-            host = getattr(r, 'host', r.get('host') if isinstance(r, dict) else '')
-            success = int(getattr(r, 'success', r.get('success') if isinstance(r, dict) else False))
-            stdout = getattr(r, 'stdout', r.get('stdout') if isinstance(r, dict) else '')
-            stderr = getattr(r, 'stderr', r.get('stderr') if isinstance(r, dict) else '')
-            duration = getattr(r, 'duration_seconds', r.get('duration_seconds') if isinstance(r, dict) else 0.0)
+            step_id = getattr(r, 'step_id', '')
+            title = getattr(r, 'title', '')
+            command = getattr(r, 'command', '')
+            host = getattr(r, 'host', '')
+            success = int(getattr(r, 'success', False))
+            stdout = getattr(r, 'stdout', '')
+            stderr = getattr(r, 'stderr', '')
+            duration = getattr(r, 'duration_seconds', 0.0)
+            target_path = getattr(r, 'target_path', None)
+            destructive = 1 if getattr(r, 'destructive', False) else 0
             
             conn.execute("""
-                INSERT INTO steps (run_id, step_id, title, command, host, success, stdout, stderr, duration)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (run_id, step_id, title, command, host, success, stdout, stderr, duration))
+                INSERT INTO steps (run_id, step_id, title, command, host, success, stdout, stderr, duration, target_path, destructive)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (run_id, step_id, title, command, host, success, stdout, stderr, duration, target_path, destructive))
         
         conn.commit()
 

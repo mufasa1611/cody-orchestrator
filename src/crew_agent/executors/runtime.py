@@ -170,21 +170,29 @@ def execute_plan_step(
             verify = _execute_linux_local(host, step.verify_command, config.command_timeout_seconds)
 
     duration = time.perf_counter() - started
+    
+    # PRO FAIL-CLOSED LOGIC
     validation_error = None
-    if primary.returncode == 0 or step.accept_nonzero_returncode:
+    is_cmd_success = (primary.returncode == 0 or (step.accept_nonzero_returncode and primary.stdout.strip()))
+    
+    if is_cmd_success and step.validation_type:
         validation_source = verify.stdout if verify is not None else primary.stdout
+        # Pass the validation type directly to the validator
         validation_error = validate_step_stdout(step, validation_source)
-    success = (
-        (primary.returncode == 0 or (step.accept_nonzero_returncode and primary.stdout.strip()))
-        and (verify is None or verify.returncode == 0)
-        and validation_error is None
-    )
+        if validation_error:
+            is_cmd_success = False
+
+    if is_cmd_success and verify is not None:
+        if verify.returncode != 0:
+            is_cmd_success = False
+            validation_error = f"Post-check (verify) failed with returncode {verify.returncode}"
+
     return StepExecutionResult(
         step_id=step.id,
         host=host.name,
         title=step.title,
         command=step.command,
-        success=success,
+        success=is_cmd_success,
         returncode=primary.returncode,
         stdout=primary.stdout,
         stderr=primary.stderr,

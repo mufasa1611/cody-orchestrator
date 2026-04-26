@@ -39,7 +39,14 @@ class PlanStep:
     command: str
     rationale: str = ""
     kind: str = "change"
-    verify_command: str | None = None
+    precheck_command: str | None = None
+    postcheck_command: str | None = None
+    rollback_command: str | None = None
+    target_path: str | None = None
+    destructive: bool = False
+    requires_backup: bool = False
+    idempotent: bool = False
+    verify_command: str | None = None  # Deprecated in favor of postcheck
     expected_signal: str | None = None
     validation_type: str | None = None
     accept_nonzero_returncode: bool = False

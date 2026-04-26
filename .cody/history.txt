@@ -41,3 +41,6 @@
 
 # 2026-04-26 18:03:25.809934
 + how many folders in the videos folder
+
+# 2026-04-26 18:24:41.416879
++how many fdolders in katalog folder
