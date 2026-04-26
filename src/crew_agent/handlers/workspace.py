@@ -87,7 +87,8 @@ def _build_local_file_create_plan(request: str, lowered: str, hosts: list[Host])
     if not _looks_like_local_file_create(lowered):
         return None
 
-    target_dir_expr, target_dir_label = _extract_target_directory(lowered)
+    # PRO PATH EXTRACTION
+    target_dir_expr, target_dir_label = _resolve_target_dir_pro(lowered)
     filename = _extract_target_filename(request, lowered)
     if not filename:
         return None
@@ -268,6 +269,27 @@ def _extract_inserted_text(request: str) -> str | None:
             if text:
                 return text
     return None
+
+
+def _resolve_target_dir_pro(lowered: str) -> tuple[str, str]:
+    """Pro-grade path resolution for file operations."""
+    # 1. Extract potential folder name using robust regex
+    path_match = re.search(r"(?:in|of|inside|at|ín)\s+(?:the\s+)?([A-Za-z0-9._/\\:-]+)", lowered)
+    target_name = path_match.group(1) if path_match else None
+    
+    if target_name:
+        # If it looks like an absolute path, use it directly
+        if re.match(r"^[a-z]:\\", target_name, re.IGNORECASE):
+            return f"'{target_name}'", target_name
+            
+        # Use the deterministic resolver for common/special folders
+        from crew_agent.handlers.deterministic import _resolve_folder_path_locally
+        resolved = _resolve_folder_path_locally(target_name)
+        if resolved:
+            return f"'{resolved}'", resolved
+            
+    # Default to current location
+    return "(Get-Location).Path", "current folder"
 
 
 def _extract_target_directory(lowered: str) -> tuple[str, str]:
