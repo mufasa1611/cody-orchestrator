@@ -18,9 +18,9 @@ class TaskSpecialist:
 
 
 SPECIALISTS: tuple[TaskSpecialist, ...] = (
+    TaskSpecialist(name="deterministic", build_plan=build_builtin_plan),
     TaskSpecialist(name="workspace", build_plan=build_workspace_plan),
     TaskSpecialist(name="code", build_plan=build_code_plan),
-    TaskSpecialist(name="deterministic", build_plan=build_builtin_plan),
 )
 
 

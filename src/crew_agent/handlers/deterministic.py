@@ -7,8 +7,8 @@ from crew_agent.core.models import ExecutionPlan, Host, PlanStep
 
 def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     lowered = " ".join(request.casefold().split())
-    windows_hosts = [host for host in hosts if host.platform == "windows"]
-    if not windows_hosts or len(windows_hosts) != len(hosts):
+    windows_hosts = [host for host in hosts if host.platform == "windows" and host.enabled]
+    if not windows_hosts:
         return None
 
     if _looks_like_github_cli_presence_request(lowered):
@@ -435,7 +435,7 @@ def _windows_content_search_plan(request: str, hosts: list[Host]) -> ExecutionPl
 
 def _looks_like_file_count_request(lowered: str) -> bool:
     count_terms = ("how many", "count", "total number of")
-    file_terms = ("file", "files", "document", "documents", "txt", "log")
+    file_terms = ("file", "files", "document", "documents", "docunment", "docunments", "txt", "log")
     return any(term in lowered for term in count_terms) and any(term in lowered for term in file_terms)
 
 
@@ -445,7 +445,7 @@ def _windows_file_count_plan(request: str, hosts: list[Host]) -> ExecutionPlan:
     target_path = "C:\\"
     folder_name = "C: drive"
     
-    if "documents" in lowered:
+    if "document" in lowered or "docunment" in lowered:
         target_path = "$([Environment]::GetFolderPath('MyDocuments'))"
         folder_name = "Documents folder"
     elif "desktop" in lowered:
