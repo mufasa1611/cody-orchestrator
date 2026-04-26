@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from crew_agent.agents import get_agent_definition
+from crew_agent.conversation.router import classify_request
 from crew_agent.core.models import AppConfig, ExecutionPlan, Host
 from crew_agent.handlers.code import build_code_plan
 from crew_agent.handlers.deterministic import build_builtin_plan
@@ -24,19 +25,21 @@ SPECIALISTS: tuple[TaskSpecialist, ...] = (
 )
 
 
-def resolve_execution_plan(request: str, hosts: list[Host], config: AppConfig) -> tuple[ExecutionPlan, str]:
-    # 1. Local specialists - MUST use the original raw request
+def resolve_execution_plan(
+    request: str,
+    hosts: list[Host],
+    config: AppConfig,
+) -> tuple[ExecutionPlan, str]:
+    """
+    Decisive Routing: Specialists get raw request first.
+    """
     for specialist in SPECIALISTS:
         plan = specialist.build_plan(request, hosts)
         if plan is not None:
             definition = get_agent_definition(str(plan.raw.get("specialist") or ""))
             if definition is not None:
                 plan.raw.setdefault("agent_title", definition.title)
-                plan.raw.setdefault(
-                    "agent_definition_path",
-                    str(definition.source_path) if definition.source_path is not None else "",
-                )
+                plan.raw.setdefault("agent_definition_path", str(definition.source_path or ""))
             return plan, specialist.name
 
-    # 2. LLM Intent Parser - only use normalized if local specialists fail
-    intent = classify_request(request, config)
+    return create_execution_plan(request=request, hosts=hosts, config=config), "planner"

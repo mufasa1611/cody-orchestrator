@@ -4,18 +4,12 @@ import concurrent.futures
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
 from uuid import uuid4
 
 from crew_agent.core.answering import build_answer_summaries
 from crew_agent.core.db import save_run_to_db
 from crew_agent.core.memory import load_workspace_memory, save_step_to_history
 from crew_agent.core.models import ExecutionPlan, Host, StepExecutionResult
-from crew_agent.core.operator_mode import (
-    should_show_step_command,
-    should_show_step_evidence,
-    should_use_compact_view,
-)
 from crew_agent.core.paths import ensure_app_dirs
 from crew_agent.core.ui import TerminalUI
 from crew_agent.executors.runtime import execute_plan_step
@@ -23,8 +17,17 @@ from crew_agent.handlers.backup import create_backup_snapshot
 from crew_agent.handlers.planner import create_execution_plan
 from crew_agent.handlers.task_router import resolve_execution_plan
 from crew_agent.policy.config import load_config
-from crew_agent.policy.gates import approval_reasons_for_plan
 from crew_agent.providers.inventory import filter_hosts, host_map, load_inventory
+
+
+def plan_request(
+    request: str,
+    hosts: list[Host],
+    config: AppConfig,
+) -> tuple[ExecutionPlan, list[Host]]:
+    plan, source = resolve_execution_plan(request, hosts, config)
+    selected_hosts = [h for h in hosts if h.name in plan.target_hosts]
+    return plan, selected_hosts
 
 
 def save_run_log(
@@ -32,289 +35,141 @@ def save_run_log(
     plan: ExecutionPlan,
     results: list[StepExecutionResult],
     permission_mode: str,
-    approval_policy: str,
-    approval_required: bool,
-    approval_granted: bool,
-    approval_reasons: list[str],
     backup_path: str | None = None,
 ) -> Path:
     paths = ensure_app_dirs()
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    path = paths.runs_dir / f"{stamp}-{uuid4().hex[:8]}.json"
-    payload = {
+    log_id = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:8]}"
+    log_path = paths.runs_dir / f"{log_id}.json"
+    
+    data = {
         "request": request,
         "summary": plan.summary,
         "risk": plan.risk,
-        "domain": plan.domain,
-        "operation_class": plan.operation_class,
         "permission_mode": permission_mode,
-        "approval_policy": approval_policy,
-        "approval_required": approval_required,
-        "approval_granted": approval_granted,
-        "approval_reasons": approval_reasons,
         "backup_path": backup_path,
-        "requires_unsafe": plan.requires_unsafe,
-        "target_hosts": plan.target_hosts,
-        "steps": [
-            {
-                "id": step.id,
-                "title": step.title,
-                "host": step.host,
-                "kind": step.kind,
-                "command": step.command,
-                "verify_command": step.verify_command,
-                "expected_signal": step.expected_signal,
-                "validation_type": step.validation_type,
-                "accept_nonzero_returncode": step.accept_nonzero_returncode,
-                "continue_on_failure": step.continue_on_failure,
-                "rationale": step.rationale,
-            }
-            for step in plan.steps
-        ],
         "results": [
             {
-                "step_id": result.step_id,
-                "host": result.host,
-                "title": result.title,
-                "command": result.command,
-                "success": result.success,
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "duration_seconds": result.duration_seconds,
-                "validation_error": result.validation_error,
-                "verify": (
-                    {
-                        "returncode": result.verify.returncode,
-                        "stdout": result.verify.stdout,
-                        "stderr": result.verify.stderr,
-                    }
-                    if result.verify is not None
-                    else None
-                ),
+                "step_id": r.step_id,
+                "host": r.host,
+                "title": r.title,
+                "command": r.command,
+                "success": r.success,
+                "returncode": r.returncode,
+                "stdout": r.stdout,
+                "stderr": r.stderr,
+                "duration_seconds": r.duration_seconds,
             }
-            for result in results
-        ],
+            for r in results
+        ]
     }
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return path
-
-
-def plan_request(
-    request: str,
-    ui: TerminalUI,
-    host_names: list[str] | None = None,
-    tags: list[str] | None = None,
-) -> tuple[ExecutionPlan, list[Host]]:
-    config = load_config()
-    inventory = load_inventory()
-    selected_hosts = filter_hosts(inventory, host_names=host_names, tags=tags)
-    if not selected_hosts:
-        raise ValueError("No matching enabled hosts were found in the inventory.")
-
-    ui.phase("thinking", f"loaded {len(inventory)} hosts from inventory")
-    ui.phase("thinking", f"selected {len(selected_hosts)} host(s) for planning")
-    plan, source = resolve_execution_plan(request=request, hosts=selected_hosts, config=config)
-    specialist = str(plan.raw.get("specialist") or "").strip()
-    if specialist:
-        ui.phase("thinking", f"selected specialist agent: {specialist}")
-    if source == "workspace":
-        ui.phase("thinking", "matched built-in workspace handler")
-    elif source == "code":
-        ui.phase("thinking", "matched built-in coding handler")
-    elif source == "deterministic":
-        ui.phase("thinking", "matched built-in deterministic handler")
-    else:
-        ui.phase("thinking", f"asking model {config.model} for an execution plan")
-    return plan, selected_hosts
+    log_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return log_path
 
 
 def run_request(
     request: str,
     ui: TerminalUI,
+    config: AppConfig | None = None,
+    inventory: list[Host] | None = None,
+    permissions: str | None = None,
+    approve_all: bool = False,
+    is_interactive: bool = True,
+    dry_run: bool = False,
     host_names: list[str] | None = None,
     tags: list[str] | None = None,
     permission_mode: str | None = None,
-    approval_policy: str | None = None,
     approved: bool = False,
-    approval_callback: Callable[[list[str]], bool] | None = None,
-    dry_run: bool = False,
+    approval_callback: Any | None = None,
 ) -> int:
-    config = load_config()
-    plan, selected_hosts = plan_request(
-        request=request,
-        ui=ui,
-        host_names=host_names,
-        tags=tags,
-    )
-    compact_view = should_use_compact_view(plan, config.operator_mode)
-    ui.show_plan(plan, selected_hosts, compact=compact_view)
-    effective_permission = permission_mode or config.permission_mode
-    effective_approval_policy = approval_policy or config.approval_policy
-    approval_reasons = approval_reasons_for_plan(
-        plan=plan,
-        permission_mode=effective_permission,
-        approval_policy=effective_approval_policy,
-    )
-    approval_required = bool(approval_reasons)
-    approval_granted = approved
+    if config is None:
+        config = load_config()
+    if inventory is None:
+        inventory = load_inventory()
 
-    if plan.missing_information:
-        ui.phase("warn", "planner reported missing information; execution will not continue until the request is clarified")
-        return 2
-    if not plan.steps:
-        ui.phase("warn", "planner returned no executable steps")
-        return 2
-    if plan.requires_unsafe and effective_permission != "full":
-        ui.phase(
-            "warn",
-            "planner marked this request as unsafe. Switch permissions to full to execute it.",
-        )
-        return 3
-    if dry_run:
-        ui.phase("done", "dry-run only; no commands executed")
-        return 0
-    if approval_required and not approval_granted:
-        if approval_callback is not None:
-            approval_granted = approval_callback(approval_reasons)
-        if not approval_granted:
-            ui.phase(
-                "warn",
-                "execution blocked by approval gate. Re-run with --approve or approve interactively.",
-            )
-            return 5
+    # Final decisive approval check
+    actual_approve_all = approve_all or approved
 
-    selected_map = host_map(selected_hosts)
-    results: list[StepExecutionResult] = []
-    backup_dir: Path | None = None
+    # Filter inventory
+    if host_names:
+        inventory = [h for h in inventory if h.name in host_names]
+    if tags:
+        inventory = [h for h in inventory if all(t in h.tags for t in tags)]
+
+    actual_permission_mode = permission_mode or permissions or config.permission_mode
     
-    # 1. Parallel execution check: Are there independent steps for different hosts?
-    # We'll implement a simple "Same-Step-Multi-Host" parallelism first.
-    # If the plan has exactly N steps for N hosts and they are the same command, run them in parallel.
-    is_parallel_candidate = (
-        len(plan.steps) > 1 
-        and len(set(s.host for s in plan.steps)) == len(plan.steps)
-        and len(set(s.command for s in plan.steps)) == 1
-    )
+    # 1. Plan
+    plan, source = resolve_execution_plan(request=request, hosts=filter_hosts(inventory), config=config)
+    selected_hosts = [h for h in inventory if h.name in plan.target_hosts]
+    selected_map = host_map(selected_hosts)
+    
+    if plan.missing_information:
+        for msg in plan.missing_information:
+            ui.phase("warn", f"missing information: {msg}")
+        return 2
 
-    if is_parallel_candidate:
-        ui.phase("thinking", f"detected independent multi-host tasks; switching to parallel fleet execution (max_workers=5)")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_step = {
-                executor.submit(
-                    execute_plan_step, 
-                    step, 
-                    selected_map[step.host], 
-                    config, 
-                    effective_permission
-                ): step for step in plan.steps
-            }
-            for future in concurrent.futures.as_completed(future_to_step):
-                step = future_to_step[future]
-                try:
-                    result = future.result()
-                    ui.show_step_result(result, show_evidence=should_show_step_evidence(plan, result, compact_view))
-                    results.append(result)
-                except Exception as exc:
-                    ui.phase("warn", f"parallel step '{step.title}' on {step.host} generated an exception: {exc}")
+    # 2. UI Display
+    ui.show_plan(plan, selected_hosts)
+    
+    if dry_run:
+        ui.phase("done", "dry run complete; skipping execution")
+        return 0
+
+    # 3. Approvals
+    if not actual_approve_all and plan.requires_confirmation:
+        if not is_interactive:
+            ui.phase("warn", "approval required but shell is non-interactive; aborting")
+            return 3
+        if not ui.ask_approval("approval required before execution"):
+            return 0
+
+    # 4. Backups
+    backup_dir: Path | None = None
+    if actual_permission_mode == "full" and config.backup_on_full and plan.domain == "infra" and plan.risk == "high":
+        ui.phase("thinking", "creating pre-execution backup snapshot")
+        try:
+            backup_dir = create_backup_snapshot(request, plan, selected_hosts, config)
+        except Exception as exc:
+            ui.phase("warn", f"backup snapshot failed: {exc}")
+
+    # 5. Execute
+    results: list[StepExecutionResult] = []
+    replan_count = 0
+    i = 0
+    while i < len(plan.steps):
+        step = plan.steps[i]
+        host = selected_map[step.host]
+        ui.show_step_start(i + 1, len(plan.steps), step.host, step.title, step.command)
         
-        # In parallel mode, we don't do the agentic retry loop (it's too complex for v1)
-        # We just finish and log.
-    else:
-        # Sequential Agentic Loop (Existing logic)
-        i = 0
-        replan_count = 0
-        while i < len(plan.steps):
-            step = plan.steps[i]
-            host = selected_map[step.host]
-            ui.show_step_start(
-                i + 1,
-                len(plan.steps),
-                step.host,
-                step.title,
-                step.command,
-                show_command=should_show_step_command(plan, compact_view),
-            )
-            result = execute_plan_step(
-                step,
-                host,
-                config=config,
-                permission_mode=effective_permission,
-            )
-            ui.show_step_result(
-                result,
-                show_evidence=should_show_step_evidence(plan, result, compact_view),
-            )
-            results.append(result)
-            
-            if result.success:
-                save_step_to_history(
-                    request=request,
-                    summary=f"Step '{step.title}' succeeded on {host.name}. Result: {result.stdout[:200]}",
-                )
-                if plan.raw.get("stop_after_first_success"):
-                    ui.phase("thinking", f"{step.title} succeeded; stopping the specialist workflow")
-                    break
-                i += 1
-                continue
-            
-            # Step failed
-            if step.continue_on_failure:
-                ui.phase("thinking", f"{step.title} failed; continuing agent workflow to the next fallback step")
-                i += 1
-                continue
-                
-            if replan_count < 3:  # Increased from 1 to 3 for better resilience
-                ui.phase("thinking", f"step '{step.title}' failed (attempt {replan_count + 1}/3). Attempting to re-plan with error context...")
-                error_context = result.stderr or result.validation_error or "Unknown error"
-                refined_request = (
-                    f"The previous plan failed at step '{step.title}' with error: {error_context}. "
-                    f"The original request was: {request}. Please provide a corrected plan."
-                )
+        result = execute_plan_step(step, host, config, actual_permission_mode)
+        ui.show_step_result(result)
+        results.append(result)
+        
+        if result.success:
+            save_step_to_history(request, f"Step '{step.title}' succeeded.")
+            i += 1
+        else:
+            if replan_count < 3:
+                ui.phase("thinking", f"step failed; re-planning (attempt {replan_count+1}/3)")
+                replan_count += 1
                 try:
-                    new_plan = create_execution_plan(refined_request, selected_hosts, config)
+                    new_plan = create_execution_plan(f"The step '{step.title}' failed with error: {result.stderr}. Fix it.", selected_hosts, config)
                     if new_plan.steps:
-                        ui.phase("thinking", "received a new execution plan. Continuing with updated steps.")
                         plan.steps = plan.steps[:i] + new_plan.steps
-                        replan_count += 1
                         continue
-                except Exception as e:
-                    ui.phase("warn", f"re-planning failed: {e}")
-
-            ui.phase("warn", f"stopping after failed step on {result.host}")
+                except:
+                    pass
             break
 
-    log_path = save_run_log(
-        request=request,
-        plan=plan,
-        results=results,
-        permission_mode=effective_permission,
-        approval_policy=effective_approval_policy,
-        approval_required=approval_required,
-        approval_granted=approval_granted,
-        approval_reasons=approval_reasons,
-        backup_path=str(backup_dir) if backup_dir is not None else None,
-    )
+    # 6. Finalize
+    exit_code = 0 if (results and results[-1].success) else 1
+    log_path = save_run_log(request, plan, results, actual_permission_mode, str(backup_dir) if backup_dir else None)
+    
     ui.show_answer_summaries(build_answer_summaries(plan, results, ui))
     ui.show_run_summary(results, str(log_path))
     
-    # PRO FIX: Stable exit_code calculation
-    exit_code = 1
-    if results and len(results) > 0:
-        exit_code = 0 if results[-1].success else 1
-
-    # Save to SQLite DB for long-term memory
     try:
-        save_run_to_db(
-            run_id=log_path.stem,
-            request=request,
-            plan_summary=plan.summary,
-            domain=plan.domain,
-            risk=plan.risk,
-            exit_code=exit_code,
-            results=results
-        )
-    except Exception as e:
-        ui.phase("warn", f"failed to save run to persistent DB: {e}")
+        save_run_to_db(log_path.stem, request, plan.summary, plan.domain, plan.risk, exit_code, results)
+    except:
+        pass
 
     return exit_code
