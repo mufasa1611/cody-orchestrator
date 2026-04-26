@@ -80,11 +80,16 @@ def run_request(
     permission_mode: str | None = None,
     approved: bool = False,
     approval_callback: Any | None = None,
+    thread: ConversationThread | None = None,
 ) -> int:
     if config is None:
         config = load_config()
     if inventory is None:
         inventory = load_inventory()
+    
+    # 0. Track conversation
+    if thread:
+        thread.add_message("user", request)
 
     # Final decisive approval check
     actual_approve_all = approve_all or approved
@@ -98,7 +103,7 @@ def run_request(
     actual_permission_mode = permission_mode or permissions or config.permission_mode
     
     # 1. Plan
-    plan, source = resolve_execution_plan(request=request, hosts=filter_hosts(inventory), config=config)
+    plan, source = resolve_execution_plan(request=request, hosts=filter_hosts(inventory), config=config, thread=thread)
     selected_hosts = [h for h in inventory if h.name in plan.target_hosts]
     selected_map = host_map(selected_hosts)
     

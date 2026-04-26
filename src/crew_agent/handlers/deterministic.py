@@ -101,15 +101,28 @@ def _windows_universal_file_plan(request: str, hosts: list[Host]) -> ExecutionPl
     if not resolved_path: return None
 
     is_count = any(t in lowered for t in ("how many", "count", "total"))
-    is_folder = "folder" in lowered
-    mode_filter = "Where-Object { $_.PSIsContainer }" if is_folder else "Where-Object { -not $_.PSIsContainer }"
+    
+    # PRO RESOURCE DETECTION
+    is_file_query = any(t in lowered for t in ("file", "pdf", "txt", "log", "json"))
+    is_folder_query = "folder" in lowered or "directory" in lowered or "dir" in lowered
+    
+    # If specifically asked for folders, use that, otherwise default to files if 'file' or 'pdf' mentioned
+    is_folder_only = is_folder_query and not is_file_query
+    
+    mode_filter = "Where-Object { $_.PSIsContainer }" if is_folder_only else "Where-Object { -not $_.PSIsContainer }"
+    resource_type = "folders" if is_folder_only else "files"
+
+    # Smart Extension Filter
+    ext_filter = "*"
+    if "pdf" in lowered: ext_filter = "*.pdf"
+    elif "text" in lowered or "txt" in lowered: ext_filter = "*.txt"
     
     if is_count:
-        cmd = f"@(Get-ChildItem -Path '{resolved_path}' -ErrorAction SilentlyContinue | {mode_filter}).Count"
-        title = f"Count {('folders' if is_folder else 'files')} in {folder_name}"
+        cmd = f"@(Get-ChildItem -Path '{resolved_path}' -Filter '{ext_filter}' -ErrorAction SilentlyContinue | {mode_filter}).Count"
+        title = f"Count {resource_type} ({ext_filter}) in {folder_name}"
     else:
-        cmd = f"Get-ChildItem -Path '{resolved_path}' -ErrorAction SilentlyContinue | {mode_filter} | Select-Object -ExpandProperty Name"
-        title = f"List {folder_name}"
+        cmd = f"Get-ChildItem -Path '{resolved_path}' -Filter '{ext_filter}' -ErrorAction SilentlyContinue | {mode_filter} | Select-Object -ExpandProperty Name"
+        title = f"List {resource_type} in {folder_name}"
 
     return _single_inspect_plan(hosts, f"Action in {resolved_path}", title, cmd, "Result", "text")
 

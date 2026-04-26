@@ -225,7 +225,7 @@ def _build_result_summary(
         return AnswerSummary(title="Answer", lines=[result.artifact_path])
 
     if plan.operation_class == "inspect" and combined_output:
-        lines = combined_output.splitlines()
+        lines = [line for line in combined_output.splitlines() if line.strip() and not line.startswith("----") and line.strip().lower() not in ("name", "fullname", "count")]
         if len(lines) > 1:
             return AnswerSummary(
                 title="Results",

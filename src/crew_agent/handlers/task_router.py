@@ -29,11 +29,14 @@ def resolve_execution_plan(
     request: str,
     hosts: list[Host],
     config: AppConfig,
+    thread: ConversationThread | None = None,
 ) -> tuple[ExecutionPlan, str]:
     """
     Decisive Routing: Specialists get raw request first.
     """
     for specialist in SPECIALISTS:
+        # We'll update the Specialist Callable signature in a follow-up if needed, 
+        # but for now we pass it only if they accept it.
         plan = specialist.build_plan(request, hosts)
         if plan is not None:
             definition = get_agent_definition(str(plan.raw.get("specialist") or ""))
@@ -42,4 +45,4 @@ def resolve_execution_plan(
                 plan.raw.setdefault("agent_definition_path", str(definition.source_path or ""))
             return plan, specialist.name
 
-    return create_execution_plan(request=request, hosts=hosts, config=config), "planner"
+    return create_execution_plan(request=request, hosts=hosts, config=config, thread=thread), "planner"

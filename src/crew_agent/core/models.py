@@ -32,6 +32,26 @@ class Host:
 
 
 @dataclass
+class ConversationMessage:
+    role: str # 'user' or 'assistant'
+    content: str
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+@dataclass
+class ConversationThread:
+    messages: list[ConversationMessage] = field(default_factory=list)
+    
+    def add_message(self, role: str, content: str):
+        self.messages.append(ConversationMessage(role=role, content=content))
+        # Sliding window: keep last 10 messages (5 turns)
+        if len(self.messages) > 10:
+            self.messages = self.messages[-10:]
+
+    def format_for_llm(self) -> str:
+        return "\n".join([f"{m.role.upper()}: {m.content}" for m in self.messages])
+
+
+@dataclass
 class PlanStep:
     id: str
     title: str

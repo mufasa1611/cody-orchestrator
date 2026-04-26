@@ -209,6 +209,7 @@ def create_execution_plan(
     request: str,
     hosts: list[Host],
     config: AppConfig,
+    thread: ConversationThread | None = None,
 ) -> ExecutionPlan:
     if not hosts:
         raise ValueError("No enabled hosts are available for planning.")
@@ -217,6 +218,10 @@ def create_execution_plan(
     history_context = ""
     if memory.history_summaries:
         history_context = "### RECENT HISTORY (FOR CONTEXT):\n" + "\n".join(memory.history_summaries) + "\n\n"
+
+    conversation_context = ""
+    if thread and thread.messages:
+        conversation_context = "### RECENT CONVERSATION:\n" + thread.format_for_llm() + "\n\n"
 
     client = OllamaClient(
         model=config.model,
@@ -230,7 +235,7 @@ def create_execution_plan(
         },
         indent=2,
     )
-    planner_prompt = history_context + _planner_system_prompt() + "\n\nIMPORTANT: Return ONLY the JSON object. Do not include any conversational filler."
+    planner_prompt = history_context + conversation_context + _planner_system_prompt() + "\n\nIMPORTANT: Return ONLY the JSON object. Do not include any conversational filler."
     data = client.generate_json(planner_prompt, user_prompt)
     plan = _normalize_plan(data, hosts)
     plan = _repair_plan(plan, request, hosts)
