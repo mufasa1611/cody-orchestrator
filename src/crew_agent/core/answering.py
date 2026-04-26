@@ -225,8 +225,13 @@ def _build_result_summary(
         return AnswerSummary(title="Answer", lines=[result.artifact_path])
 
     if plan.operation_class == "inspect" and combined_output:
-        first_line = combined_output.splitlines()[0][:160]
-        return AnswerSummary(title="Answer", lines=[first_line])
+        lines = combined_output.splitlines()
+        if len(lines) > 1:
+            return AnswerSummary(
+                title="Results",
+                lines=[f"Found {len(lines)} items:"] + [f"- {line}" for line in lines[:10]] + (["..."] if len(lines) > 10 else []),
+            )
+        return AnswerSummary(title="Answer", lines=[combined_output[:500]])
 
     return None
 

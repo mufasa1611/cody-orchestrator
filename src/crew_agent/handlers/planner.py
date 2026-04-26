@@ -21,6 +21,8 @@ Rules:
 - Prefer inspection commands first when the user asks to "check", "show", "list", "status", or "version".
 - For Windows hosts, produce PowerShell command text only. Do not wrap it in "powershell -Command".
 - IMPORTANT: Never use CMD.exe style flags (e.g., dir /s, del /f, copy /y). Use native PowerShell cmdlets (e.g., Get-ChildItem -Recurse, Remove-Item -Force, Copy-Item).
+- Never recursively scan the root of C: or D: drives for file contents or patterns unless explicitly told to "scan the whole disk". Focus on the User Profile ($env:USERPROFILE) or specific named folders.
+- For all file modifications (replacing text, inserting lines), you MUST use the "edit" kind with a valid JSON command. Never use PowerShell redirection (Set-Content, Add-Content) to edit source code.
 - For recursive file searches on Windows, always check if results were found and exit 0 if output exists, even if minor errors (like Access Denied) occurred.
 - For Linux hosts, produce shell commands that can run through "bash -lc".
 - Inspection commands must emit useful stdout directly.

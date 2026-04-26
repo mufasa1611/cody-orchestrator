@@ -5,6 +5,7 @@ import os
 import re
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
@@ -452,6 +453,14 @@ class TerminalUI:
                     border_style=summary.tone or "green",
                 )
             )
+
+    def ask_approval(self, message: str) -> bool:
+        self.phase("warn", message)
+        try:
+            res = Prompt.ask("  type [bold green]approve[/bold green] to continue", default="quit")
+            return res.lower() == "approve"
+        except (EOFError, KeyboardInterrupt):
+            return False
 
     def select_option(
         self,
