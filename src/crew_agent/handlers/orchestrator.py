@@ -140,6 +140,10 @@ def run_request(
     results: list[StepExecutionResult] = []
     replan_count = 0
     i = 0
+    
+    # PRO ORCHESTRATION: Handle conditional termination
+    stop_on_success = plan.raw.get("stop_after_first_success", False)
+
     while i < len(plan.steps):
         step = plan.steps[i]
         host = selected_map[step.host]
@@ -151,8 +155,17 @@ def run_request(
         
         if result.success:
             save_step_to_history(request, f"Step '{step.title}' succeeded.")
+            if stop_on_success:
+                ui.phase("done", "Task achieved on first successful step; terminating early.")
+                break
             i += 1
         else:
+            # If step allowed failure, just move on
+            if step.continue_on_failure:
+                ui.phase("thinking", "Step failed but marked as optional; continuing...")
+                i += 1
+                continue
+                
             if replan_count < 3:
                 ui.phase("thinking", f"step failed; re-planning (attempt {replan_count+1}/3)")
                 replan_count += 1
