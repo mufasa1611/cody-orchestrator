@@ -15,20 +15,16 @@ def build_builtin_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     if not windows_hosts:
         return None
 
-    # 1. Identity & System (Instant)
-    if ("powershell" in lowered or "pwsh" in lowered) and "version" in lowered:
-        return _windows_powershell_version_plan(windows_hosts)
-
-    # 2. Universal File/Folder Counter (Pro Two-Step Logic)
     if _looks_like_file_query(raw_input):
         return _windows_universal_file_plan(request, windows_hosts)
-
-    # 3. Content Search (Grep)
-    if _looks_like_content_search_request(lowered):
+    
+    if ("powershell" in lowered or "pwsh" in lowered) and "version" in lowered:
+        return _windows_powershell_version_plan(windows_hosts)
+        
+    if any(t in lowered for t in ("content", "inside", "contains", "grep")):
         return _windows_content_search_plan(request, windows_hosts)
 
-    # 4. Cleanup
-    if _looks_like_cleanup_request(lowered):
+    if any(t in lowered for t in ("cleanup", "clean up", "wipe")) and any(t in lowered for t in ("temp", "tmp", "cache")):
         return _windows_cleanup_plan(windows_hosts)
 
     return None
@@ -53,76 +49,75 @@ def _resolve_folder_path_locally(folder_name: str) -> str | None:
 
 def _looks_like_file_query(l: str) -> bool:
     return any(t in l for t in ("how many", "count", "total", "list", "show", "contents")) and \
-           any(t in l for t in ("file", "folder", "directory", "dir", "video", "document", "music", "desktop", "download", "png", "pdf", "jpg", "jpeg"))
-
-def _looks_like_content_search_request(l: str) -> bool:
-    return any(t in l for t in ("content", "inside", "contains", "grep"))
-
-def _looks_like_cleanup_request(l: str) -> bool:
-    return any(t in l for t in ("cleanup", "clean up", "wipe")) and any(t in l for t in ("temp", "tmp", "cache"))
+           any(t in l for t in ("file", "folder", "directory", "dir", "video", "document", "music", "desktop", "download", "png", "pdf", "jpg", "jpeg", "psd"))
 
 
 def _windows_universal_file_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
     lowered = request.lower()
-    path_match = re.search(r"(?:in|of) (?:the )?([A-Za-z0-9._/\\-]+)", lowered)
-    folder_name = path_match.group(1) if path_match else "documents"
     
-    resolved_path = _resolve_folder_path_locally(folder_name)
+    # 1. Robust Path Extraction
+    path_match = re.search(r"(?:in|of|inside|at|ín)\s+(?:the\s+)?([A-Za-z0-9._/\\:-]+)", lowered)
+    target_name = path_match.group(1) if path_match else None
+    if not target_name: return None 
+
+    # 2. Resolve Path
+    resolved_path = None
+    if re.match(r"^[a-z]:\\", target_name, re.IGNORECASE):
+        resolved_path = target_name
+    else:
+        resolved_path = _resolve_folder_path_locally(target_name)
     if not resolved_path: return None
 
-    # 3. Smart Extension & Mode Filter
+    # 3. Intent Logic
     is_count = any(t in lowered for t in ("how many", "count", "total"))
-    has_image_keyword = any(t in lowered for t in ("image", "picture"))
-    
-    # PRO RESOURCE DETECTION: 
-    is_folder_query = any(t in lowered for t in ("folder", "directory", "dir", "folders"))
-    
-    if is_folder_query:
-        # If they explicitly said 'folder', ignore all file keywords
-        is_file_query = False
-    else:
-        # Otherwise, check for files/extensions
-        ext_match = re.search(r"\b([a-z0-9]{2,4})\b files?", lowered)
-        is_file_query = ext_match is not None or has_image_keyword or "file" in lowered
-    
-    mode_filter = "Where-Object { $_.PSIsContainer }" if is_folder_query else "Where-Object { -not $_.PSIsContainer }"
-    resource_type = "folders" if is_folder_query else "files"
+    ext_match = re.search(r"\b([a-z0-9]{2,4})\b files?", lowered)
+    found_ext = ext_match.group(1) if ext_match else None
+    if found_ext in ("how", "many", "file", "folder", "list", "the"): found_ext = None
 
-    # Smart Extension Filter
+    wants_folders = any(t in lowered for t in ("folder", "directory", "dir"))
+    wants_files = any(t in lowered for t in ("file", "pdf", "jpg", "png", "txt", "psd")) or (not wants_folders and found_ext is None)
+    is_both = wants_folders and wants_files
+    
+    # Extension filtering
     ext_filter = "*"
-    if has_image_keyword:
-        ext_filter = "*.jpg,*.jpeg,*.png,*.gif"
-    elif ext_match:
-        found_ext = ext_match.group(1)
-        if found_ext not in ("how", "many", "file", "folder", "list"):
-            ext_filter = f"*.{found_ext}"
-    elif "pdf" in lowered: ext_filter = "*.pdf"
-    elif "text" in lowered or "txt" in lowered: ext_filter = "*.txt"
+    if not is_both:
+        if found_ext: ext_filter = f"*.{found_ext}"
+        elif any(t in lowered for t in ("image", "picture")): ext_filter = "*.jpg,*.jpeg,*.png,*.gif"
+        elif "pdf" in lowered: ext_filter = "*.pdf"
 
+    # 4. Command Generation
     if is_count:
-        # PRO UPGRADE: Use @() to force array in PowerShell so JSON is always a list
-        if "," in ext_filter:
-            # Multi-extension requires -Include
-            include_list = "'" + "','".join(ext_filter.split(',')) + "'"
+        if is_both:
+            resource_type = "items (files and folders)"
             cmd = (
-                f"$p='{resolved_path}'; $i=@(Get-ChildItem -Path $p -Include {include_list} -Recurse -ErrorAction SilentlyContinue | {mode_filter}); "
+                f"$p='{resolved_path}'; $i=@(Get-ChildItem -Path $p -Filter '{ext_filter}' -ErrorAction SilentlyContinue); "
+                "$paths = $i | ForEach-Object { $_.FullName }; "
+                f"[pscustomobject]@{{Folder=$p; Type='{resource_type}'; Count=$i.Count; Items=@($paths)}} | ConvertTo-Json -Compress"
+            )
+        elif wants_folders:
+            resource_type = "folders"
+            cmd = (
+                f"$p='{resolved_path}'; $i=@(Get-ChildItem -Path $p -Filter '{ext_filter}' -ErrorAction SilentlyContinue | Where-Object {{ $_.PSIsContainer }}); "
                 "$paths = $i | ForEach-Object { $_.FullName }; "
                 f"[pscustomobject]@{{Folder=$p; Type='{resource_type}'; Count=$i.Count; Items=@($paths)}} | ConvertTo-Json -Compress"
             )
         else:
+            resource_type = "files"
             cmd = (
-                f"$p='{resolved_path}'; $i=@(Get-ChildItem -Path $p -Filter '{ext_filter}' -ErrorAction SilentlyContinue | {mode_filter}); "
+                f"$p='{resolved_path}'; $i=@(Get-ChildItem -Path $p -Filter '{ext_filter}' -ErrorAction SilentlyContinue | Where-Object {{ -not $_.PSIsContainer }}); "
                 "$paths = $i | ForEach-Object { $_.FullName }; "
                 f"[pscustomobject]@{{Folder=$p; Type='{resource_type}'; Count=$i.Count; Items=@($paths)}} | ConvertTo-Json -Compress"
             )
         val_type = "file_count_json"
-        title = f"Count {resource_type} in {folder_name}"
     else:
-        cmd = f"Get-ChildItem -Path '{resolved_path}' -Filter '{ext_filter}' -ErrorAction SilentlyContinue | {mode_filter} | Select-Object -ExpandProperty Name"
+        resource_type = "items"
+        mode_filter = ""
+        if wants_folders and not wants_files: mode_filter = "| Where-Object { $_.PSIsContainer }"
+        elif wants_files and not wants_folders: mode_filter = "| Where-Object { -not $_.PSIsContainer }"
+        cmd = f"Get-ChildItem -Path '{resolved_path}' -Filter '{ext_filter}' -ErrorAction SilentlyContinue {mode_filter} | Select-Object -ExpandProperty Name"
         val_type = "text"
-        title = f"List {resource_type} in {folder_name}"
 
-    return _single_inspect_plan(hosts, f"Action in {resolved_path}", title, cmd, "Result", val_type)
+    return _single_inspect_plan(hosts, f"Action in {resolved_path}", f"Process {resource_type} in {target_name}", cmd, "Result", val_type)
 
 
 def _windows_content_search_plan(request: str, hosts: list[Host]) -> ExecutionPlan | None:
