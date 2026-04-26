@@ -70,12 +70,18 @@ echo.
 echo Analyzing hardware for optimal performance...
 echo.
 
-:: Use PowerShell to detect CPU, GPU, and VRAM
-set "HW_SCRIPT=$gpu = Get-CimInstance Win32_VideoController | Select-Object -First 1; $vram = [math]::Round($gpu.AdapterRAM / 1GB, 0); $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1; Write-Output \"CPU: $($cpu.Name)\"; Write-Output \"GPU: $($gpu.Name)\"; Write-Output \"VRAM: $vram GB\";"
-powershell -NoProfile -Command "%HW_SCRIPT%"
+:: Use PowerShell + NVIDIA-SMI to detect real hardware
+echo Analyzing hardware for optimal performance...
+echo.
 
-:: Decision logic in PowerShell for recommendation
-for /f "tokens=*" %%i in ('powershell -NoProfile -Command "$gpu = Get-CimInstance Win32_VideoController | Select-Object -First 1; $vram = [math]::Round($gpu.AdapterRAM / 1GB, 0); if($vram -ge 20){'llama3:70b'}elseif($vram -ge 12){'gemma2:27b'}elseif($vram -ge 6){'gemma2:9b'}else{'phi3'}"') do set "REC_MODEL=%%i"
+set "HW_SCRIPT=$vram=0; if(Get-Command nvidia-smi -ErrorAction SilentlyContinue){ $vram = [math]::Round((nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | Measure-Object -Sum).Sum / 1024, 0) } else { $gpu = Get-CimInstance Win32_VideoController | Where-Object { $_.AdapterRAM -gt 0 } | Select-Object -First 1; if($gpu){ $vram = [math]::Round($gpu.AdapterRAM / 1GB, 0) } }; $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1; Write-Output \"CPU: $($cpu.Name)\"; Write-Output \"VRAM Detected: $vram GB\"; if($vram -ge 20){'llama3:70b'}elseif($vram -ge 12){'gemma2:27b'}elseif($vram -ge 6){'gemma2:9b'}else{'phi3'}"
+
+for /f "tokens=*" %%i in ('powershell -NoProfile -Command "%HW_SCRIPT%"') do (
+    set "OUT_LINE=%%i"
+    if "!OUT_LINE:~0,4!"=="CPU:" echo !OUT_LINE!
+    if "!OUT_LINE:~0,5!"=="VRAM " echo !OUT_LINE!
+    if not "!OUT_LINE:~0,4!"=="CPU:" if not "!OUT_LINE:~0,5!"=="VRAM " set "REC_MODEL=%%i"
+)
 
 echo.
 echo Based on your hardware, I recommend: [bold cyan]%REC_MODEL%[/bold cyan]
