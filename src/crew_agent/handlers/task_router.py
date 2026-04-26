@@ -24,11 +24,8 @@ SPECIALISTS: tuple[TaskSpecialist, ...] = (
 )
 
 
-def resolve_execution_plan(
-    request: str,
-    hosts: list[Host],
-    config: AppConfig,
-) -> tuple[ExecutionPlan, str]:
+def resolve_execution_plan(request: str, hosts: list[Host], config: AppConfig) -> tuple[ExecutionPlan, str]:
+    # 1. Local specialists - MUST use the original raw request
     for specialist in SPECIALISTS:
         plan = specialist.build_plan(request, hosts)
         if plan is not None:
@@ -40,4 +37,6 @@ def resolve_execution_plan(
                     str(definition.source_path) if definition.source_path is not None else "",
                 )
             return plan, specialist.name
-    return create_execution_plan(request=request, hosts=hosts, config=config), "planner"
+
+    # 2. LLM Intent Parser - only use normalized if local specialists fail
+    intent = classify_request(request, config)
